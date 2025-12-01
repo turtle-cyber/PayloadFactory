@@ -8,6 +8,7 @@ check_deps_ordered.py
 check_deps.py
 check_torch.py
 inspect_trl.py
+inspect_dataset.py
 CrucialCWE.png
 debug_results.txt
 test_exploit_gen.py
