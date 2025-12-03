@@ -5,6 +5,14 @@ import subprocess
 import threading
 import os
 import sys
+import logging
+import json
+# Add project root to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
+from ml_engine.logger_config import setup_logger
+
+# Configure logging (JSON)
+logger = setup_logger(__name__, "scan_log.json")
 
 # Configure appearance
 ctk.set_appearance_mode("Dark")
@@ -35,9 +43,16 @@ class PayloadFactoryApp(ctk.CTk):
         self.open_exploits_btn = ctk.CTkButton(self.sidebar_frame, text="Open Exploits Folder", command=self.open_exploits_folder)
         self.open_exploits_btn.grid(row=2, column=0, padx=20, pady=10)
 
-        # --- Main Area ---
-        self.top_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.top_frame.grid(row=0, column=1, padx=20, pady=20, sticky="ew")
+        # --- Main Area (Tabs) ---
+        self.tab_view = ctk.CTkTabview(self, width=800)
+        self.tab_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        
+        self.scan_tab = self.tab_view.add("Scan Mode")
+        self.agent_tab = self.tab_view.add("Agent Mode")
+        
+        # --- SCAN TAB CONTENT ---
+        self.top_frame = ctk.CTkFrame(self.scan_tab, fg_color="transparent")
+        self.top_frame.pack(fill="x", pady=10)
         
         self.folder_label = ctk.CTkLabel(self.top_frame, text="Target Folder:", font=ctk.CTkFont(size=14))
         self.folder_label.pack(side="left", padx=(0, 10))
@@ -50,10 +65,46 @@ class PayloadFactoryApp(ctk.CTk):
         
         self.start_btn = ctk.CTkButton(self.top_frame, text="Start Scan", width=100, fg_color="green", hover_color="darkgreen", command=self.start_scan)
         self.start_btn.pack(side="left", padx=10)
+        
+        # Deep Thinking: Quick scan checkbox placement
+        # - Place between folder selection and attack mode (logical flow)
+        # - Prominent but not intrusive
+        # - Tooltip provides clarity without cluttering UI
+        # - Default unchecked for backward compatibility
+        self.quick_scan_frame = ctk.CTkFrame(self.scan_tab, fg_color="transparent")
+        self.quick_scan_frame.pack(fill="x", pady=10)
+        
+        self.quick_scan_var = ctk.BooleanVar(value=False)  # Default: full scan
+        self.quick_scan_check = ctk.CTkCheckBox(
+            self.quick_scan_frame, 
+            text="⚡ Quick Scan (MVP Mode - ~2 hours)",
+            variable=self.quick_scan_var,
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        self.quick_scan_check.pack(side="left", padx=(0, 10))
+        
+        self.quick_scan_info = ctk.CTkLabel(
+            self.quick_scan_frame,
+            text="(Scans only top ~300 security-critical files)",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        )
+        self.quick_scan_info.pack(side="left")
 
-        # --- Attack Mode Options ---
-        self.attack_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.attack_frame.grid(row=0, column=1, padx=20, pady=(60, 0), sticky="ew") # Below top_frame
+        # Demo Mode Checkbox
+        self.demo_mode_var = ctk.BooleanVar(value=False)
+        self.demo_mode_check = ctk.CTkCheckBox(
+            self.quick_scan_frame,
+            text="🔥 Demo Mode (Paranoid)",
+            variable=self.demo_mode_var,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="red", hover_color="darkred"
+        )
+        self.demo_mode_check.pack(side="left", padx=(20, 10))
+
+        # Attack Mode Options (Inside Scan Tab)
+        self.attack_frame = ctk.CTkFrame(self.scan_tab, fg_color="transparent")
+        self.attack_frame.pack(fill="x", pady=20)
         
         self.attack_mode_var = ctk.BooleanVar(value=False)
         self.attack_check = ctk.CTkCheckBox(self.attack_frame, text="Enable Attack Mode (Stage 3)", variable=self.attack_mode_var, command=self.toggle_attack_inputs)
@@ -71,6 +122,25 @@ class PayloadFactoryApp(ctk.CTk):
         
         self.toggle_attack_inputs() # Initialize state
 
+        # --- AGENT TAB CONTENT ---
+        self.agent_info = ctk.CTkLabel(self.agent_tab, text="Run the following command on your Linux target:", font=ctk.CTkFont(size=14, weight="bold"))
+        self.agent_info.pack(pady=(20, 10))
+        
+        self.agent_cmd = ctk.CTkEntry(self.agent_tab, width=600)
+        self.agent_cmd.insert(0, "python3 linux_agent.py --server http://192.168.1.170:8000")
+        self.agent_cmd.pack(pady=5)
+        
+        self.agent_status = ctk.CTkLabel(self.agent_tab, text="Live Agent Logs:", text_color="gray")
+        self.agent_status.pack(pady=(20, 5))
+        
+        self.agent_log_box = ctk.CTkTextbox(self.agent_tab, width=700, height=300, font=("Consolas", 11))
+        self.agent_log_box.pack(pady=10)
+        self.agent_log_box.configure(state="disabled")
+        
+        # Start polling for logs
+        self.last_log_pos = 0
+        self.after(2000, self.poll_agent_logs)
+
         # --- Console Output ---
         self.console_label = ctk.CTkLabel(self, text="Scan Logs & Vulnerability Reports:", font=ctk.CTkFont(size=14, weight="bold"))
         self.console_label.grid(row=0, column=1, padx=20, pady=(120, 0), sticky="w") # Adjusted padding
@@ -82,6 +152,23 @@ class PayloadFactoryApp(ctk.CTk):
         # --- Exploit List (Right Side - Optional, keeping simple for now) ---
         
         self.process = None
+        
+        # Start API Server for Agent
+        self.start_server()
+
+    def start_server(self):
+        def run_uvicorn():
+            try:
+                # Run uvicorn programmatically or via subprocess
+                # Redirect stderr to a file to capture startup errors
+                with open("server_error.log", "w") as err_file:
+                    cmd = [sys.executable, "-m", "uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+                    subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW, stderr=err_file, stdout=err_file)
+                logger.info("API Server started on port 8000")
+            except Exception as e:
+                logger.error(f"Failed to start API server: {e}")
+
+        threading.Thread(target=run_uvicorn, daemon=True).start()
 
     def toggle_attack_inputs(self):
         state = "normal" if self.attack_mode_var.get() else "disabled"
@@ -118,6 +205,20 @@ class PayloadFactoryApp(ctk.CTk):
 
         self.start_btn.configure(state="disabled", text="Scanning...")
         self.log(f"\n--- Starting Scan on: {target_dir} ---\n")
+        
+        # Deep Thinking: User feedback for scan mode
+        # - Clear messaging about what will happen
+        # - Sets proper expectations for completion time
+        # - Visible in console so user can verify settings
+        if self.quick_scan_var.get():
+            self.log("--- QUICK SCAN MODE: Prioritizing top ~300 security-critical files ---")
+            self.log("--- Estimated time: 1.5-2.5 hours ---\n")
+        elif self.demo_mode_var.get():
+            self.log("--- DEMO MODE ENABLED: Paranoid scanning for critical targets ---")
+        else:
+            self.log("--- FULL SCAN: All files will be scanned ---")
+            self.log("--- This may take several hours ---\n")
+        
         if remote_host:
             self.log(f"--- ATTACK MODE: Targeting {remote_host}:{remote_port} ---\n")
 
@@ -133,6 +234,16 @@ class PayloadFactoryApp(ctk.CTk):
         
         if remote_host and remote_port:
             cmd.extend(["--remote-host", remote_host, "--remote-port", remote_port])
+        
+        # Deep Thinking: Flag propagation from GUI
+        # - Simple boolean check - either quick or full scan
+        # - Could add max_files customization but keeping simple for MVP
+        # - Flag is passed to orchestrator which handles stage coordination
+        if self.quick_scan_var.get():
+            cmd.append("--quick-scan")
+            
+        if self.demo_mode_var.get():
+            cmd.append("--demo-mode")
         
         try:
             # Force UTF-8 encoding for the subprocess output
@@ -182,6 +293,31 @@ class PayloadFactoryApp(ctk.CTk):
         self.console_box.delete("1.0", "end")
         self.console_box.configure(state="disabled")
         self.folder_entry.delete(0, "end")
+
+    def poll_agent_logs(self):
+        try:
+            log_file = "scan_log.json"
+            if os.path.exists(log_file):
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    f.seek(self.last_log_pos)
+                    new_lines = f.readlines()
+                    self.last_log_pos = f.tell()
+                    
+                    for line in new_lines:
+                        if "Received agent log" in line:
+                            try:
+                                log_entry = json.loads(line)
+                                msg = f"[{log_entry['timestamp']}] {log_entry['message']}"
+                                self.agent_log_box.configure(state="normal")
+                                self.agent_log_box.insert("end", msg + "\n")
+                                self.agent_log_box.see("end")
+                                self.agent_log_box.configure(state="disabled")
+                            except:
+                                pass
+        except Exception as e:
+            pass
+        
+        self.after(2000, self.poll_agent_logs)
 
 if __name__ == "__main__":
     app = PayloadFactoryApp()

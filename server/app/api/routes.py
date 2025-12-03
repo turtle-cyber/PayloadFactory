@@ -142,3 +142,47 @@ async def optimize_exploit_endpoint(request: RLRequest):
         return {"optimized_payload": optimized_payload}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Remote Agent Endpoint ---
+
+from ml_engine.db_manager import DatabaseManager
+
+# Lazy loader for DB
+db_manager = None
+
+def get_db():
+    global db_manager
+    if db_manager is None:
+        db_manager = DatabaseManager()
+    return db_manager
+
+class AgentLogRequest(BaseModel):
+    metadata: dict
+    log_file: str
+    content: str
+    timestamp: float
+
+# Configure logger for agent logs (to be visible in GUI)
+from ml_engine.logger_config import setup_logger
+agent_logger = setup_logger("agent_logger", "scan_log.json")
+
+@router.post("/agent/logs")
+async def receive_agent_logs(request: AgentLogRequest):
+    try:
+        # 1. Save to MongoDB (Persistent Storage)
+        db = get_db()
+        log_data = request.dict()
+        db.save_agent_log(log_data)
+        
+        # 2. Log to file (For GUI Real-time Display)
+        # Format: "Received agent log from <hostname>: <message>"
+        hostname = log_data.get('metadata', {}).get('hostname', 'Unknown')
+        message = log_data.get('content', '')
+        agent_logger.info(f"Received agent log from {hostname}: {message}")
+        
+        return {"status": "received"}
+    except Exception as e:
+        logger.error(f"Failed to process agent log: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

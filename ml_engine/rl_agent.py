@@ -75,12 +75,23 @@ class RLAgent:
             
             if target_ip:
                 # Real Attack
-                is_crash = fuzzer.send_payload(current_payload)
-                if is_crash:
+                result = fuzzer.send_payload(current_payload)
+                
+                if result["crash"]:
                     reward = 100
+                    is_crash = True
                     logger.info(f"RL Agent: CRASH achieved at iteration {i}!")
                 else:
-                    reward = -1 # Alive (Penalty for failure)
+                    # Smart Reward: Penalize failure but reward Latency Spikes (DoS potential)
+                    # Base penalty: -1
+                    # Bonus: +0.5 for every 100ms over 200ms (up to +5)
+                    latency_bonus = max(0, (result["time_ms"] - 200) / 100.0) * 0.5
+                    reward = -1 + min(5, latency_bonus)
+                    
+                    if latency_bonus > 1:
+                        logger.info(f"RL Agent: Latency Bonus (+{latency_bonus:.1f}) for {result['time_ms']:.1f}ms response.")
+                        
+                    is_crash = False
             else:
                 # Mock Reward
                 if len(current_payload) > 200: 

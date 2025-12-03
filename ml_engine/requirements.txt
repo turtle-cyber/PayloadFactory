@@ -5,3 +5,8 @@ scikit-learn
 tqdm
 numpy
 pymongo
+peft
+trl
+bitsandbytes
+datasets
+accelerate

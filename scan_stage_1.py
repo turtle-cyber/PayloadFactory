@@ -10,25 +10,32 @@ import gc
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
 from ml_engine.vuln_scanner import VulnScanner
 from ml_engine.db_manager import DatabaseManager
+from ml_engine.logger_config import setup_logger
+from ml_engine.file_prioritizer import FilePrioritizer
 
 # Initialize DB
 db_manager = DatabaseManager()
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("scan_log.txt", mode='a'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__, "scan_log.json")
 
-def scan_stage_1(target_dir, intermediate_file):
+def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, max_files=300):
     """
     Stage 1: Scan C/C++ files using specialized models.
     Saves findings to intermediate_file.
+    
+    Args:
+        target_dir: Directory to scan
+        intermediate_file: JSON file to save findings
+        scan_id: Optional database scan ID
+        quick_scan: If True, prioritize files and limit to max_files (MVP mode)
+        max_files: Maximum files to scan in quick mode (default: 300)
+        
+    Deep Thinking:
+    - quick_scan defaults to False for backward compatibility
+    - When enabled, we apply intelligent prioritization AFTER existing filters
+    - This ensures we still skip tests/headers, then prioritize what's left
+    - Existing full-scan behavior is completely unchanged
     """
     logger.info("="*50)
     logger.info("="*50)
@@ -83,15 +90,59 @@ def scan_stage_1(target_dir, intermediate_file):
             
         filtered_files.append(f)
         
-    logger.info(f"Proceeding with {len(filtered_files)} files after filtering (excluded {len(target_files) - len(filtered_files)}).")
+    logger.info(f"Proceeding with {len(filtered_files)} files after filtering (excluded {len(target_files) - len(filtered_files)})")
+    
+    # QUICK SCAN MODE: Prioritize files if enabled
+    # Deep Thinking:
+    # - This is a NEW step that only runs when quick_scan=True
+    # - We apply prioritization AFTER existing filters (don't waste compute on test files)
+    # - Logging shows both filtered count AND prioritized count for transparency
+    # - If quick_scan=False, final_files = filtered_files (no change)
+    final_files = filtered_files
+    
+    if quick_scan:
+        logger.info("="*50)
+        logger.info("QUICK SCAN MODE ENABLED")
+        logger.info(f"Prioritizing files and limiting to top {max_files}...")
+        logger.info("="*50)
+        
+        try:
+            prioritizer = FilePrioritizer({"max_files": max_files})
+            prioritized = prioritizer.prioritize_files(filtered_files)
+            
+            # Extract just the file paths (drop scores)
+            final_files = [file_path for file_path, score in prioritized]
+            
+            logger.info(f"Selected {len(final_files)} high-priority files out of {len(filtered_files)} filtered files")
+            logger.info(f"Time savings estimate: {len(filtered_files) - len(final_files)} files skipped")
+            
+            # Show top 10 selected files for transparency
+            logger.info("Top 10 prioritized files:")
+            for i, (file_path, score) in enumerate(prioritized[:10]):
+                logger.info(f"  {i+1}. [{score:.1f}] {os.path.basename(file_path)}")
+                
+        except Exception as e:
+            logger.error(f"File prioritization failed: {e}. Falling back to all filtered files.")
+            # Graceful degradation: if prioritizer fails, scan all filtered files
+            final_files = filtered_files
     
     all_findings = []
     
     try:
         vuln_scanner = VulnScanner(mode="c_cpp")
         
-        for file_path in filtered_files:
+        for file_path in final_files:  # Changed from filtered_files to final_files
             logger.info(f"Scanning: {os.path.basename(file_path)}")
+            
+            # Register file in DB
+            file_id = None
+            if scan_id:
+                try:
+                    file_size = os.path.getsize(file_path)
+                    file_id = db_manager.add_file(scan_id, file_path, file_size)
+                except Exception as e:
+                    logger.error(f"Failed to register file {file_path}: {e}")
+
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     code_content = f.read()
@@ -106,11 +157,16 @@ def scan_stage_1(target_dir, intermediate_file):
                     confirmed = [v for v in vulnerabilities if v.get('confidence', 0) > 0.5]
                     if confirmed:
                         logger.info(f"Flagged for analysis: {os.path.basename(file_path)} (Confidence: {confirmed[0]['confidence']:.2f})")
-                        all_findings.append({
+                        
+                        # Add IDs to finding object for intermediate file consistency
+                        finding_entry = {
                             'file_path': file_path,
                             'file_name': os.path.basename(file_path),
-                            'vulnerabilities': confirmed
-                        })
+                            'vulnerabilities': confirmed,
+                            'scan_id': scan_id,
+                            'file_id': file_id
+                        }
+                        all_findings.append(finding_entry)
                         
                         # REAL-TIME SAVING: Update the file immediately
                         try:
@@ -119,12 +175,43 @@ def scan_stage_1(target_dir, intermediate_file):
                             logger.info(f"Saved intermediate findings (Total: {len(all_findings)})")
                             
                             # DB SAVE
-                            db_manager.save_finding({
-                                'file_path': file_path,
-                                'file_name': os.path.basename(file_path),
-                                'vulnerabilities': confirmed,
-                                'stage': 1
-                            })
+                            # We save each vulnerability individually or as a block?
+                            # db_manager.save_finding expects a finding dict.
+                            # The current structure has 'vulnerabilities': [list].
+                            # We should probably iterate and save each vuln if we want granular tracking,
+                            # OR save the whole block.
+                            # Looking at db_manager.save_finding, it updates based on file_path+location.
+                            # So we should iterate.
+                            
+                            for vuln in confirmed:
+                                # Extract line number
+                                line_number = 0
+                                loc_str = vuln.get('location', '')
+                                if 'Line' in loc_str:
+                                    try:
+                                        line_number = int(loc_str.split('Line')[1].strip().split()[0])
+                                    except: pass
+
+                                vuln_data = {
+                                    'file_path': file_path,
+                                    'file_name': os.path.basename(file_path),
+                                    'location': loc_str,
+                                    'line_number': line_number,
+                                    'details': vuln,
+                                    'stage': 1
+                                }
+                                # Save and capture ID
+                                finding_id = db_manager.save_finding(vuln_data, scan_id=scan_id, file_id=file_id)
+                                
+                                # Update the finding entry in all_findings with the ID so Stage 2 knows it
+                                # We need to find the specific vuln in finding_entry['vulnerabilities'] and add the ID
+                                # But finding_entry['vulnerabilities'] is a list of dicts.
+                                # 'vuln' is a reference to one of them?
+                                # Yes, 'confirmed' is a list of references to dicts in 'vulnerabilities' (which is ref to 'vulnerabilities' list)
+                                # So modifying 'vuln' modifies 'finding_entry'
+                                vuln['finding_id'] = finding_id
+                                vuln['line_number'] = line_number
+
                         except Exception as save_err:
                             logger.error(f"Failed to save intermediate file/db: {save_err}")
 
@@ -142,9 +229,35 @@ def scan_stage_1(target_dir, intermediate_file):
         sys.exit(1)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("target_dir")
-    parser.add_argument("intermediate_file")
+    parser = argparse.ArgumentParser(
+        description="Stage 1: Specialized model scanning for C/C++/Java/PHP files"
+    )
+    parser.add_argument("target_dir", help="Directory to scan")
+    parser.add_argument("intermediate_file", help="JSON file to save findings")
+    parser.add_argument("--scan-id", help="Scan ID for database tracking")
+    
+    # Deep Thinking: Quick scan parameters
+    # - Flag is optional (default False) for backward compatibility
+    # - max_files has sensible default (300) but can be overridden
+    # - Designed to be easily called from orchestrator or GUI
+    parser.add_argument(
+        "--quick-scan", 
+        action="store_true",
+        help="Enable quick scan mode (prioritize security-critical files for faster MVP scanning)"
+    )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=300,
+        help="Maximum files to scan in quick mode (default: 300)"
+    )
+    
     args = parser.parse_args()
     
-    scan_stage_1(args.target_dir, args.intermediate_file)
+    scan_stage_1(
+        args.target_dir, 
+        args.intermediate_file, 
+        scan_id=args.scan_id,
+        quick_scan=args.quick_scan,
+        max_files=args.max_files
+    )

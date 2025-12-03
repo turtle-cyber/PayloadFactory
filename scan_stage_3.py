@@ -9,19 +9,12 @@ import glob
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
 from ml_engine.fuzzing_module import Fuzzer
 from ml_engine.rl_agent import RLAgent
+from ml_engine.logger_config import setup_logger
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("scan_log.txt", mode='a'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__, "scan_log.json")
 
-def scan_stage_3(output_dir, remote_host=None, remote_port=None):
+def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None):
     """
     Stage 3: Fuzzing and RL Optimization of generated exploits.
     """
@@ -87,6 +80,12 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None):
                     from ml_engine.exploit_generator import ExploitGenerator, PayloadExtractor
                     # We need a generator instance. In a real app, pass it or singleton.
                     # For now, we instantiate (expensive but functional)
+                    # Ideally we should pass the model/tokenizer if possible, but Stage 3 is standalone process usually.
+                    # If we want to share model, we'd need to load it here or pass it.
+                    # For now, let's assume it loads its own or we skip regeneration if too heavy.
+                    # To avoid reloading heavy model, we might skip this if not strictly needed.
+                    # But the original code had it.
+                    
                     gen = ExploitGenerator() 
                     
                     new_code = gen.regenerate_exploit(exploit_code, "No Crash detected. Payload might be incorrect or offset too small.")
@@ -134,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("output_dir")
     parser.add_argument("--remote-host", help="Target IP")
     parser.add_argument("--remote-port", type=int, help="Target Port")
+    parser.add_argument("--scan-id", help="Scan ID for database tracking")
     args = parser.parse_args()
     
-    scan_stage_3(args.output_dir, args.remote_host, args.remote_port)
+    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id)
