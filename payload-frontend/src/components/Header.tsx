@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { logo } from "../helpers/assetExport";
+import { Bot } from "lucide-react";
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -14,7 +15,6 @@ const Header: React.FC = () => {
         <div className="flex items-center justify-between border-[#C93D3D] border rounded-xl p-3">
           {/* Logo */}
           <Link to="/" className="text-2xl font-bold tracking-wider">
-            {/* <span className="text-white font-mono">TURTLENECK</span> */}
             <img src={logo} width={180} />
           </Link>
 
@@ -42,6 +42,18 @@ const Header: React.FC = () => {
                 />
               </svg>
               <span className="font-medium">Scan</span>
+            </Link>
+
+            <Link
+              to="/agent"
+              className={`flex items-center space-x-2 transition-colors duration-200 ${
+                isActive("/agent")
+                  ? "text-red-400"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <Bot />
+              <span className="font-medium">Agent Logs</span>
             </Link>
 
             <Link

@@ -3,6 +3,5 @@ export const DB_CONFIG = {
     SCANS: "scans",
     FINDINGS: "findings",
     FILES: "files",
-    EXPLOITS: "exploits",
   },
 };

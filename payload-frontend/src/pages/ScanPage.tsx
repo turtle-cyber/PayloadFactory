@@ -11,6 +11,9 @@ interface FormData {
   exportFormat: string;
   quickScan: boolean;
   demoMode: boolean;
+  attackMode: boolean;
+  targetIp: string;
+  targetPort: string;
 }
 
 interface ScanProgress {
@@ -38,17 +41,20 @@ interface StoredScan {
 }
 
 // localStorage helper functions
-const STORAGE_KEY = 'payloadfactory_active_scan';
+const STORAGE_KEY = "payloadfactory_active_scan";
 
 const saveScanToStorage = (scan: ScanProgress) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      scan_id: scan.scan_id,
-      project_name: scan.project_name || 'Unknown',
-      status: scan.status,
-      started_at: scan.started_at || new Date().toISOString(),
-      last_updated: new Date().toISOString()
-    }));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        scan_id: scan.scan_id,
+        project_name: scan.project_name || "Unknown",
+        status: scan.status,
+        started_at: scan.started_at || new Date().toISOString(),
+        last_updated: new Date().toISOString(),
+      })
+    );
   } catch (error) {
     console.error("Failed to save scan to localStorage:", error);
   }
@@ -82,6 +88,9 @@ const ScanPage: React.FC = () => {
     exportFormat: "Excel.xlsx",
     quickScan: false,
     demoMode: false,
+    attackMode: false,
+    targetIp: "",
+    targetPort: "",
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -107,13 +116,15 @@ const ScanPage: React.FC = () => {
       if (storedScan) {
         try {
           // Fetch current status from backend
-          const response = await http.get(`/scans/${storedScan.scan_id}/status`);
+          const response = await http.get(
+            `/scans/${storedScan.scan_id}/status`
+          );
           if (response.data.success) {
             const scanData = response.data.data;
             setScanProgress(scanData);
 
             // Resume polling if scan is still active
-            const activeStatuses = ['pending', 'stage-1', 'stage-2', 'stage-3'];
+            const activeStatuses = ["pending", "stage-1", "stage-2", "stage-3"];
             if (activeStatuses.includes(scanData.status)) {
               setIsScanning(true);
               startPolling(storedScan.scan_id);
@@ -148,12 +159,19 @@ const ScanPage: React.FC = () => {
 
           // Stop polling if scan is completed, failed, or cancelled
           const status = scanData.status;
-          if (status === "completed" || status === "failed" || status === "cancelled") {
+          if (
+            status === "completed" ||
+            status === "failed" ||
+            status === "cancelled"
+          ) {
             stopPolling();
             setIsScanning(false);
 
             if (status === "completed") {
-              toast.success("Scan completed", "Your vulnerability scan has finished successfully");
+              toast.success(
+                "Scan completed",
+                "Your vulnerability scan has finished successfully"
+              );
             } else if (status === "failed") {
               toast.error("Scan failed", "The scan encountered an error");
             }
@@ -217,8 +235,47 @@ const ScanPage: React.FC = () => {
     }
 
     if (!formData.applicationName.trim()) {
-      toast.error("Application name required", "Please enter an application name");
+      toast.error(
+        "Application name required",
+        "Please enter an application name"
+      );
       return;
+    }
+
+    // Attack mode validation
+    if (formData.attackMode) {
+      if (!formData.targetIp.trim()) {
+        toast.error(
+          "IP address required",
+          "Please enter a target IP address for attack mode"
+        );
+        return;
+      }
+      if (!formData.targetPort.trim()) {
+        toast.error(
+          "Port required",
+          "Please enter a target port for attack mode"
+        );
+        return;
+      }
+      // Basic IP validation (optional but recommended)
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (!ipPattern.test(formData.targetIp.trim())) {
+        toast.error(
+          "Invalid IP address",
+          "Please enter a valid IP address (e.g., 192.168.1.1)"
+        );
+        return;
+      }
+      // Basic port validation
+      const port = parseInt(formData.targetPort.trim());
+      if (isNaN(port) || port < 1 || port > 65535) {
+        toast.error(
+          "Invalid port",
+          "Please enter a valid port number (1-65535)"
+        );
+        return;
+      }
     }
 
     // Clear previous scan from storage
@@ -236,6 +293,11 @@ const ScanPage: React.FC = () => {
       uploadData.append("minConfidence", formData.minConfidence);
       uploadData.append("quickScan", formData.quickScan.toString());
       uploadData.append("demoMode", formData.demoMode.toString());
+      uploadData.append("attackMode", formData.attackMode.toString());
+      if (formData.attackMode) {
+        uploadData.append("targetIp", formData.targetIp);
+        uploadData.append("targetPort", formData.targetPort);
+      }
 
       toast.success("Uploading...", "Processing your ZIP file");
 
@@ -287,7 +349,9 @@ const ScanPage: React.FC = () => {
         toast.success("Scan stopped", "The scan has been cancelled");
         stopPolling();
         setIsScanning(false);
-        setScanProgress((prev) => prev ? { ...prev, status: "cancelled" } : null);
+        setScanProgress((prev) =>
+          prev ? { ...prev, status: "cancelled" } : null
+        );
       }
     } catch (error: any) {
       console.error("Error stopping scan:", error);
@@ -344,8 +408,8 @@ const ScanPage: React.FC = () => {
   };
 
   return (
-    <div className="overflow-auto text-white px-8 py-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="overflow-auto text-white">
+      <div className="max-w-6xl mx-auto space-y-6 px-6">
         {/* Scan Progress Section */}
         {scanProgress && (
           <div className="glassmorphism-card rounded-xl p-8 border border-blue-500/20">
@@ -364,14 +428,22 @@ const ScanPage: React.FC = () => {
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                <h2 className="text-xl font-semibold text-white">Scan Progress</h2>
+                <h2 className="text-xl font-semibold text-white">
+                  Scan Progress
+                </h2>
               </div>
               <div className="flex items-center space-x-3">
-                <span className={`text-sm font-medium ${getStatusColor(scanProgress.status)}`}>
+                <span
+                  className={`text-sm font-medium ${getStatusColor(
+                    scanProgress.status
+                  )}`}
+                >
                   {getStageLabel(scanProgress.status)}
                 </span>
                 {/* Show dismiss button only for finished scans */}
-                {['completed', 'failed', 'cancelled'].includes(scanProgress.status) && (
+                {["completed", "failed", "cancelled"].includes(
+                  scanProgress.status
+                ) && (
                   <button
                     onClick={handleDismissScan}
                     className="px-3 py-1 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-400 hover:text-red-400 hover:border-red-500/50 transition-all text-sm flex items-center space-x-1"
@@ -399,11 +471,15 @@ const ScanPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-black/30 rounded-lg p-4">
                   <p className="text-gray-400 text-sm mb-1">Scan ID</p>
-                  <p className="text-white font-mono text-sm">{scanProgress.scan_id}</p>
+                  <p className="text-white font-mono text-sm">
+                    {scanProgress.scan_id}
+                  </p>
                 </div>
                 <div className="bg-black/30 rounded-lg p-4">
                   <p className="text-gray-400 text-sm mb-1">Project</p>
-                  <p className="text-white text-sm">{scanProgress.project_name}</p>
+                  <p className="text-white text-sm">
+                    {scanProgress.project_name}
+                  </p>
                 </div>
               </div>
 
@@ -416,13 +492,17 @@ const ScanPage: React.FC = () => {
                     </p>
                   </div>
                   <div className="bg-black/30 rounded-lg p-4">
-                    <p className="text-gray-400 text-sm mb-1">Vulnerabilities</p>
+                    <p className="text-gray-400 text-sm mb-1">
+                      Vulnerabilities
+                    </p>
                     <p className="text-red-400 text-2xl font-semibold">
                       {scanProgress.progress.vulnerabilities_found || 0}
                     </p>
                   </div>
                   <div className="bg-black/30 rounded-lg p-4">
-                    <p className="text-gray-400 text-sm mb-1">Exploits Generated</p>
+                    <p className="text-gray-400 text-sm mb-1">
+                      Exploits Generated
+                    </p>
                     <p className="text-yellow-400 text-2xl font-semibold">
                       {scanProgress.progress.exploits_generated || 0}
                     </p>
@@ -464,7 +544,9 @@ const ScanPage: React.FC = () => {
                 d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
               />
             </svg>
-            <h2 className="text-xl font-semibold text-white">Upload Project (ZIP)</h2>
+            <h2 className="text-xl font-semibold text-white">
+              Upload Project (ZIP)
+            </h2>
           </div>
 
           <div className="space-y-6">
@@ -493,7 +575,7 @@ const ScanPage: React.FC = () => {
                 <button
                   onClick={handleBrowse}
                   disabled={isScanning || isUploading}
-                  className="px-6 py-3 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-3 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg
                     className="w-4 h-4"
@@ -513,14 +595,15 @@ const ScanPage: React.FC = () => {
               </div>
               {selectedFile && (
                 <p className="text-xs text-gray-500 mt-2">
-                  Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                  Selected: {selectedFile.name} (
+                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
                 </p>
               )}
             </div>
 
             {/* Application Name */}
             <div>
-              <label className="block text-sm text-cyan-400 mb-3">
+              <label className="block text-sm text-gray-400 mb-3">
                 Enter Application Name:
               </label>
               <input
@@ -558,12 +641,46 @@ const ScanPage: React.FC = () => {
                 />
                 <span className="text-sm text-gray-300">Demo Mode</span>
               </label>
+
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="attackMode"
+                  checked={formData.attackMode}
+                  onChange={handleInputChange}
+                  disabled={isScanning || isUploading}
+                  className="w-4 h-4 bg-black/50 border border-gray-700/50 rounded text-red-500 focus:ring-red-500 disabled:opacity-50"
+                />
+                <span className="text-sm text-gray-300">
+                  Enable Attack Mode (Stage 3)
+                </span>
+                <span className="text-sm text-gray-400">Target IP:</span>
+                <input
+                  type="text"
+                  name="targetIp"
+                  value={formData.targetIp}
+                  onChange={handleInputChange}
+                  placeholder="192.168.x.x"
+                  disabled={!formData.attackMode || isScanning || isUploading}
+                  className="w-40 bg-black/50 border border-gray-700/50 rounded-lg px-3 py-1 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <span className="text-sm text-gray-400">Port:</span>
+                <input
+                  type="text"
+                  name="targetPort"
+                  value={formData.targetPort}
+                  onChange={handleInputChange}
+                  placeholder="80"
+                  disabled={!formData.attackMode || isScanning || isUploading}
+                  className="w-24 bg-black/50 border border-gray-700/50 rounded-lg px-3 py-1 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </label>
             </div>
           </div>
         </div>
 
         {/* Scan Configuration Section */}
-        <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
+        {/* <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
           <div className="flex items-center space-x-3 mb-6">
             <svg
               className="w-5 h-5 text-red-500"
@@ -590,7 +707,6 @@ const ScanPage: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            {/* Max Token Length */}
             <div>
               <label className="block text-sm text-gray-400 mb-3">
                 Max Token Length
@@ -626,7 +742,6 @@ const ScanPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Batch Size */}
             <div>
               <label className="block text-sm text-gray-400 mb-3">
                 Batch Size
@@ -662,7 +777,6 @@ const ScanPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Min Confidence */}
             <div>
               <label className="block text-sm text-gray-400 mb-3">
                 Min Confidence (0.0 - 1.0)
@@ -703,7 +817,7 @@ const ScanPage: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Export Settings Section */}
         <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
@@ -742,8 +856,8 @@ const ScanPage: React.FC = () => {
                   className="flex-1 bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors"
                 />
                 <button
-                  onClick={() => handleBrowse("exportProjectPath")}
-                  className="px-6 py-3 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all flex items-center space-x-2"
+                  onClick={() => handleBrowse()}
+                  className="px-4 py-3 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all flex items-center space-x-2"
                 >
                   <svg
                     className="w-4 h-4"
@@ -765,7 +879,7 @@ const ScanPage: React.FC = () => {
 
             {/* Export Format */}
             <div>
-              <label className="block text-sm text-cyan-400 mb-3">
+              <label className="block text-sm text-gray-400 mb-3">
                 Export Format:
               </label>
               <div className="relative">

@@ -153,13 +153,16 @@ class AnalyticsService {
    */
   async getExploitsByType() {
     const db = getDb();
-    const exploitsCollection = db.collection(DB_CONFIG.COLLECTIONS.EXPLOITS);
+    const findingsCollection = db.collection(DB_CONFIG.COLLECTIONS.FINDINGS);
 
-    const results = await exploitsCollection
+    const results = await findingsCollection
       .aggregate([
         {
+          $unwind: "$exploits",
+        },
+        {
           $group: {
-            _id: "$cwe",
+            _id: "$exploits.cwe",
             count: { $sum: 1 },
           },
         },
@@ -188,10 +191,21 @@ class AnalyticsService {
    */
   async getExploitsByOwasp() {
     const db = getDb();
-    const exploitsCollection = db.collection(DB_CONFIG.COLLECTIONS.EXPLOITS);
+    const findingsCollection = db.collection(DB_CONFIG.COLLECTIONS.FINDINGS);
 
-    // Get all exploits
-    const exploits = await exploitsCollection.find({}).toArray();
+    // Get all exploits from findings
+    const findings = await findingsCollection
+      .aggregate([
+        {
+          $unwind: "$exploits",
+        },
+        {
+          $project: {
+            cwe: "$exploits.cwe",
+          },
+        },
+      ])
+      .toArray();
 
     // Initialize OWASP categories from the mapping file
     const owaspCategories = {};
@@ -200,8 +214,8 @@ class AnalyticsService {
     });
 
     // Map CWE to OWASP and count
-    exploits.forEach((exploit) => {
-      const cwe = exploit.cwe;
+    findings.forEach((finding) => {
+      const cwe = finding.cwe;
       // Extract CWE number from string like "CWE-252: Source Code Execution"
       const cweMatch = cwe.match(/CWE-\d+/);
       if (cweMatch) {
