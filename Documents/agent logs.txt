@@ -1,0 +1,6 @@
+[2025-12-03T17:45:06.921091] Received agent log from server1: 2025-12-03T12:15:07.483661+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 611101, ignoring.
+[2025-12-03T17:45:11.939577] Received agent log from server1: 2025-12-03T12:15:12.517239+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 611139, ignoring.
+[2025-12-03T17:45:12.244396] Received agent log from server1: 2025-12-03T12:15:12.732316+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 611209, ignoring.
+[2025-12-03T17:45:27.694727] Received agent log from server1: 2025-12-03T12:15:28.230721+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 611542, ignoring.
+[2025-12-03T17:45:33.218071] Received agent log from server1: 2025-12-03T12:15:33.706446+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 611722, ignoring.
+[2025-12-03T17:45:34.928402] Received agent log from server1: 2025-12-03T12:15:35.425692+00:00 server1 microk8s.daemon-kubelite[24454]: E1203 12:15:35.424457   24454 dns.go:153] "Nameserver limits exceeded" err="Nameserver limits were exceeded, some nameservers have been omitted, the applied nameserver line is: 8.8.8.8 1.1.1.1 4.2.2.2"

@@ -1,10 +1,11 @@
-2025-12-03 16:34:43,918 - INFO - Connected to MongoDB: payloadfactoryDB
-2025-12-03 16:34:43,928 - INFO - Created new scan: 6930194b066bae7bfb6e2707
-2025-12-03 16:34:43,928 - INFO - ============================================================
-2025-12-03 16:34:43,928 - INFO - QUICK SCAN MODE ENABLED
-2025-12-03 16:34:43,928 - INFO - Will prioritize top 300 security-critical files
-2025-12-03 16:34:43,928 - INFO - Estimated completion time: 1.5-2.5 hours
-2025-12-03 16:34:43,928 - INFO - ============================================================
-2025-12-03 16:34:43,928 - INFO - Launching scan_stage_1.py...
-2025-12-03 16:35:25,970 - INFO - scan_stage_1.py completed successfully.
-2025-12-03 16:35:25,970 - INFO - Launching scan_stage_2.py...
+2025-12-04 14:48:57,498 - INFO - Connected to MongoDB: payloadfactoryDB
+2025-12-04 14:48:57,498 - INFO - Created new scan: 693152012034f60741fd78ed
+2025-12-04 14:48:57,498 - INFO - Running FULL SCAN (all files)
+2025-12-04 14:48:57,498 - INFO - Launching scan_stage_1.py...
+2025-12-04 14:49:09,172 - INFO - scan_stage_1.py completed successfully.
+2025-12-04 14:49:09,172 - INFO - Launching scan_stage_2.py...
+2025-12-04 14:49:13,329 - INFO - scan_stage_2.py completed successfully.
+2025-12-04 14:49:13,330 - INFO - Launching scan_stage_3.py...
+2025-12-04 14:49:27,388 - INFO - scan_stage_3.py completed successfully.
+2025-12-04 14:49:27,389 - INFO - ALL STAGES COMPLETED SUCCESSFULLY.
+2025-12-04 14:49:27,390 - INFO - MongoDB connection closed.

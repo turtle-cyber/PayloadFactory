@@ -12,6 +12,14 @@ class RLAgent:
         self.learning_rate = 0.1
         self.discount_factor = 0.95
         self.epsilon = 0.1 # Exploration rate
+        
+        # DB for Resource-Aware Fuzzing
+        try:
+            from ml_engine.db_manager import DatabaseManager
+            self.db = DatabaseManager()
+            if not self.db.connected: self.db = None
+        except:
+            self.db = None
 
     def get_state(self, last_response_code, payload_length):
         """
@@ -83,10 +91,20 @@ class RLAgent:
                     logger.info(f"RL Agent: CRASH achieved at iteration {i}!")
                 else:
                     # Smart Reward: Penalize failure but reward Latency Spikes (DoS potential)
-                    # Base penalty: -1
+                    # Base penalty: -0.1 (Small penalty to encourage exploration)
                     # Bonus: +0.5 for every 100ms over 200ms (up to +5)
                     latency_bonus = max(0, (result["time_ms"] - 200) / 100.0) * 0.5
-                    reward = -1 + min(5, latency_bonus)
+                    reward = -0.1 + min(5, latency_bonus)
+                    
+                    # --- RESOURCE AWARE BONUS ---
+                    if self.db:
+                        metrics = self.db.get_recent_metrics(limit=1, seconds=2)
+                        if metrics:
+                            cpu = metrics[0].get('metrics', {}).get('cpu_percent', 0)
+                            if cpu > 50:
+                                cpu_bonus = (cpu - 50) * 0.5 # Up to +25 reward
+                                reward += cpu_bonus
+                                logger.info(f"RL Agent: CPU Bonus (+{cpu_bonus:.1f}) for {cpu}% CPU usage.")
                     
                     if latency_bonus > 1:
                         logger.info(f"RL Agent: Latency Bonus (+{latency_bonus:.1f}) for {result['time_ms']:.1f}ms response.")

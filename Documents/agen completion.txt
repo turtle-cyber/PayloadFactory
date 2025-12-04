@@ -1,0 +1,18 @@
+]: Cannot find unit for notify message of PID 623719, ignoring.
+[2025-12-03T17:53:46.066657] Received agent log from server1: 2025-12-03T12:23:46.565920+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 623980, ignoring.
+[2025-12-03T17:53:56.700826] Received agent log from server1: 2025-12-03T12:23:57.256829+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 624305, ignoring.
+[2025-12-03T17:53:57.909730] Received agent log from server1: 2025-12-03T12:23:58.427160+00:00 server1 microk8s.daemon-kubelite[24454]: E1203 12:23:58.426760   24454 dns.go:153] "Nameserver limits exceeded" err="Nameserver limits were exceeded, some nameservers have been omitted, the applied nameserver line is: 8.8.8.8 1.1.1.1 4.2.2.2"
+[2025-12-03T17:54:01.727275] Received agent log from server1: 2025-12-03T12:24:02.286805+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 624345, ignoring.
+[2025-12-03T17:54:01.932586] Received agent log from server1: 2025-12-03T12:24:02.506286+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 624415, ignoring.
+[2025-12-03T17:54:07.050797] Received agent log from server1: 2025-12-03T12:24:07.536728+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 624490, ignoring.
+[2025-12-03T17:54:22.897177] Received agent log from server1: 2025-12-03T12:24:23.460085+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 624923, ignoring.
+[2025-12-03T17:54:28.119482] Received agent log from server1: 2025-12-03T12:24:28.691639+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 625076, ignoring.
+[2025-12-03T17:54:31.934416] Received agent log from server1: 2025-12-03T12:24:32.425851+00:00 server1 microk8s.daemon-kubelite[24454]: E1203 12:24:32.425303   24454 dns.go:153] "Nameserver limits exceeded" err="Nameserver limits were exceeded, some nameservers have been omitted, the applied nameserver line is: 8.8.8.8 1.1.1.1 4.2.2.2"
+[2025-12-03T17:54:33.343913] Received agent log from server1: 2025-12-03T12:24:33.925500+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 625185, ignoring.
+[2025-12-03T17:54:38.461405] Received agent log from server1: 2025-12-03T12:24:38.958519+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 625261, ignoring.
+[2025-12-03T17:54:43.879380] Received agent log from server1: 2025-12-03T12:24:44.427182+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 625454, ignoring.
+[2025-12-03T17:54:48.900857] Received agent log from server1: 2025-12-03T12:24:49.460498+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 625515, ignoring.
+[2025-12-03T17:54:54.219908] Received agent log from server1: 2025-12-03T12:24:54.731101+00:00 server1 systemd[1]: Cannot find unit for notify message of PID 625652, ignoring.
+[2025-12-03T17:55:01.347074] Received agent log from server1: 2025-12-03T12:25:01.864920+00:00 server1 CRON[625875]: (root) CMD (command -v debian-sa1 > /dev/null && debian-sa1 1 1)
+[2025-12-03T17:55:01.351049] Received agent log from server1: 2025-12-03T12:25:01.864672+00:00 server1 CRON[625874]: pam_unix(cron:session): session opened for user root(uid=0) by root(uid=0)
+[2025-12-03T17:55:01.455893] Received agent log from server1: 2025-12-03T12:25:01.869375+00:00 server1 CRON[625874]: pam_unix(cron:session): session closed for user root

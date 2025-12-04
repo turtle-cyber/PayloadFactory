@@ -139,7 +139,6 @@ class PayloadFactoryApp(ctk.CTk):
         
         # Start polling for logs
         self.last_log_pos = 0
-        self.after(2000, self.poll_agent_logs)
 
         # --- Console Output ---
         self.console_label = ctk.CTkLabel(self, text="Scan Logs & Vulnerability Reports:", font=ctk.CTkFont(size=14, weight="bold"))
@@ -150,13 +149,25 @@ class PayloadFactoryApp(ctk.CTk):
         self.console_box.configure(state="disabled")
 
         # --- Exploit List (Right Side - Optional, keeping simple for now) ---
-        
+
         self.process = None
-        
-        # Start API Server for Agent
+        self.server_started = False
+
+        # Defer server start and log polling until after UI is fully initialized
+        self.after(100, self._post_init_tasks)
+
+    def _post_init_tasks(self):
+        """Initialize non-UI tasks after the window is displayed"""
+        # Start server in background
         self.start_server()
+        # Start log polling
+        self.after(2000, self.poll_agent_logs)
 
     def start_server(self):
+        """Start API server in background thread without blocking UI"""
+        if self.server_started:
+            return
+
         def run_uvicorn():
             try:
                 # Run uvicorn programmatically or via subprocess
@@ -165,6 +176,7 @@ class PayloadFactoryApp(ctk.CTk):
                     cmd = [sys.executable, "-m", "uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
                     subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW, stderr=err_file, stdout=err_file)
                 logger.info("API Server started on port 8000")
+                self.server_started = True
             except Exception as e:
                 logger.error(f"Failed to start API server: {e}")
 
@@ -295,28 +307,39 @@ class PayloadFactoryApp(ctk.CTk):
         self.folder_entry.delete(0, "end")
 
     def poll_agent_logs(self):
+        """Poll agent logs in a more efficient way"""
         try:
             log_file = "scan_log.json"
             if os.path.exists(log_file):
-                with open(log_file, 'r', encoding='utf-8') as f:
-                    f.seek(self.last_log_pos)
-                    new_lines = f.readlines()
-                    self.last_log_pos = f.tell()
-                    
-                    for line in new_lines:
-                        if "Received agent log" in line:
-                            try:
-                                log_entry = json.loads(line)
-                                msg = f"[{log_entry['timestamp']}] {log_entry['message']}"
-                                self.agent_log_box.configure(state="normal")
-                                self.agent_log_box.insert("end", msg + "\n")
-                                self.agent_log_box.see("end")
-                                self.agent_log_box.configure(state="disabled")
-                            except:
-                                pass
+                file_size = os.path.getsize(log_file)
+                # Only read if file has grown since last check
+                if file_size > self.last_log_pos:
+                    with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        f.seek(self.last_log_pos)
+                        # Read only up to 100KB at a time to prevent UI lag
+                        chunk_size = min(100 * 1024, file_size - self.last_log_pos)
+                        if chunk_size > 0:
+                            content = f.read(chunk_size)
+                            self.last_log_pos = f.tell()
+
+                            # Process lines without blocking
+                            lines = content.split('\n')
+                            for line in lines[:50]:  # Limit to 50 lines per poll to prevent lag
+                                if "Received agent log" in line:
+                                    try:
+                                        log_entry = json.loads(line)
+                                        msg = f"[{log_entry.get('timestamp', 'N/A')}] {log_entry.get('message', line)}"
+                                        self.agent_log_box.configure(state="normal")
+                                        self.agent_log_box.insert("end", msg + "\n")
+                                        self.agent_log_box.see("end")
+                                        self.agent_log_box.configure(state="disabled")
+                                    except:
+                                        pass
         except Exception as e:
+            # Silently handle errors to prevent log spam
             pass
-        
+
+        # Continue polling
         self.after(2000, self.poll_agent_logs)
 
 if __name__ == "__main__":

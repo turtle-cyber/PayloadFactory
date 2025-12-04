@@ -374,7 +374,7 @@ Code:
 2. **Vulnerability Check**: Check for patterns like SQL Injection, XSS, Command Injection, Path Traversal, etc.
 3. **False Positive Check**: Is this test code? Is the input sanitized? Is the dangerous function actually reachable?
 4. **Classification**: If vulnerable, identify the specific CWE.
-5. **Owasp Check**: Is this a known OWASP Top 10 issue?
+5. **Owasp Check**: Is this a known OWASP Top 10 issue? If so, provide the specific category.
 6. **Severity Check**: Assign a severity level based on the vulnerability.
 7. **Details Check**: Provide a brief explanation of the vulnerability and how to exploit it.
 

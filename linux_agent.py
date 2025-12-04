@@ -1,5 +1,4 @@
 import time
-import time
 import requests
 import socket
 import platform

@@ -33,7 +33,7 @@ class DatabaseManager:
         else:
             logger.warning("pymongo not installed. Database features disabled.")
 
-    def create_scan(self, project_name, root_path):
+    def create_scan(self, project_name, root_path, file_size=0):
         """Creates a new scan record and returns the scan_id."""
         if not self.connected: return None
         
@@ -53,7 +53,15 @@ class DatabaseManager:
                     'completed_at': None
                 },
                 'date': datetime.utcnow().strftime('%Y-%m-%d'),
-                'file_size': 0 # Placeholder, maybe total size of project?
+                'file_size': file_size,
+                'progress': {
+                    'current_stage': 0,
+                    'files_scanned': 0,
+                    'total_files': 0,
+                    'vulnerabilities_found': 0,
+                    'exploits_generated': 0,
+                    'current_file': None
+                }
             }
             result = collection.insert_one(scan_doc)
             scan_id = result.inserted_id
@@ -213,6 +221,44 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to update scan status: {e}")
 
+    def update_scan_progress(self, scan_id, updates):
+        """Updates scan progress fields using dot notation for nested updates.
+        
+        Args:
+            scan_id: The scan ID string
+            updates: Dict with fields to update. Supports dot notation for nested fields
+                     e.g., {'status': 'stage-1', 'progress.current_stage': 1}
+        """
+        if not self.connected or not scan_id: return
+        try:
+            self.db['scans'].update_one(
+                {'_id': ObjectId(scan_id)},
+                {'$set': updates}
+            )
+            logger.debug(f"Updated scan {scan_id} progress: {updates}")
+        except Exception as e:
+            logger.error(f"Failed to update scan progress: {e}")
+
+    def get_scan(self, scan_id):
+        """Retrieves a scan document by its ID.
+        
+        Args:
+            scan_id: The scan ID string
+            
+        Returns:
+            The scan document dict, or None if not found
+        """
+        if not self.connected or not scan_id: return None
+        try:
+            scan = self.db['scans'].find_one({'_id': ObjectId(scan_id)})
+            if scan:
+                scan['_id'] = str(scan['_id'])  # Convert ObjectId to string
+            return scan
+        except Exception as e:
+            logger.error(f"Failed to get scan: {e}")
+            return None
+
+
     def close_connection(self):
         """Closes the MongoDB connection."""
         if self.client:
@@ -250,4 +296,23 @@ class DatabaseManager:
             return logs
         except Exception as e:
             logger.error(f"Failed to fetch agent logs: {e}")
+            return []
+
+    def get_recent_metrics(self, limit=1, seconds=5):
+        """Retrieves agent metrics from the last N seconds."""
+        if not self.connected: return []
+        
+        try:
+            collection = self.db['agent_logs']
+            cutoff_time = datetime.utcnow() - timedelta(seconds=seconds)
+            
+            # Filter for type='metric'
+            query = {
+                'type': 'metric',
+                'timestamp': {'$gte': cutoff_time}
+            }
+            metrics = list(collection.find(query).sort('timestamp', -1).limit(limit))
+            return metrics
+        except Exception as e:
+            logger.error(f"Failed to fetch agent metrics: {e}")
             return []

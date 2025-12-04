@@ -22,7 +22,7 @@ test_agent.log
 intermediate_findings.json
 scan_log.json
 server_error.log
-images 
+images
 saved_models
 saved_model
 __pycache__
@@ -39,3 +39,12 @@ train_qwen_vl.py
 exploits.zip
 INTEGRATION_INSTRUCTIONS.txt
 scan_log.txt
+verify_infinite_loop_fix.py
+verify_infinite_mode.py
+verify_intelligent_loop.py
+verify_dos_detection.py
+verify_parallel_fuzzing.py
+verify
+**/payload-uploads/
+**/payload-scans/
+intermediate_*.json

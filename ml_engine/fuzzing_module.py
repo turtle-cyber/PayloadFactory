@@ -4,6 +4,7 @@ import string
 import logging
 import time
 import socket
+import concurrent.futures
 
 # Import DatabaseManager to check for agent logs
 try:
@@ -31,6 +32,12 @@ class Fuzzer:
         
         if self.target_ip:
             logger.info(f"Fuzzer initialized for target: {self.target_ip}:{self.target_port}")
+            
+        self.paths = []
+
+    def set_paths(self, paths):
+        """Sets the list of valid endpoints discovered by the Spider."""
+        self.paths = paths
 
     NASTY_STRINGS = [
         b"%n" * 10, # Format String
@@ -41,6 +48,9 @@ class Fuzzer:
         b"\x00", # Null Byte Injection
         b"\xff" * 10, # Integer Overflow potential
         b"{{7*7}}", # SSTI
+        b"; date;", # Command Injection (Date)
+        b"| date", # Command Injection (Pipe Date)
+        b"`date`", # Command Injection (Backtick Date) 
     ]
 
     def mutate_payload(self, payload, mutation_rate=0.1):
@@ -105,7 +115,24 @@ class Fuzzer:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(2.0) # 2 second timeout
             s.connect((self.target_ip, self.target_port))
-            s.send(payload)
+            
+            # If we have discovered paths, try to inject into HTTP request line
+            # This is a heuristic: if payload starts with "GET /", we replace "/" with "/path"
+            final_payload = payload
+            if self.paths and payload.startswith(b"GET /"):
+                import random
+                chosen_path = random.choice(self.paths)
+                # Replace "GET /" with "GET /path"
+                # Note: This assumes standard HTTP request format
+                try:
+                    parts = payload.split(b" ")
+                    if len(parts) >= 2:
+                        parts[1] = chosen_path.encode()
+                        final_payload = b" ".join(parts)
+                except:
+                    pass
+            
+            s.send(final_payload)
             
             # Check for response
             try:
@@ -155,6 +182,14 @@ class Fuzzer:
                 # 2. Check for Latency Spike (DoS / Heavy Processing)
                 if result["time_ms"] > 1500: # > 1.5 seconds
                     logger.warning(f"Iteration {i}: High Latency ({result['time_ms']:.2f}ms) detected!")
+                    crashes.append({
+                        "iteration": i,
+                        "payload": mutated_payload.hex(),
+                        "error": f"High Latency (DoS Potential): {result['time_ms']:.2f}ms",
+                        "metrics": result
+                    })
+                    # We don't return immediately for latency, we want to see if we can sustain it or crash it.
+                    # But we mark it as a finding.
                 
                 # 3. Check Agent Logs (Side-Channel Feedback)
                 if self.db:
@@ -183,12 +218,26 @@ class Fuzzer:
                             logger.warning(f"Iteration {i}: HTTP 403 (Block) - WAF detected.")
                         elif " 200 " in status_line:
                             # Check for RCE confirmation in body
-                            if "root" in response_str or "uid=" in response_str or "2025" in response_str:
+                            # Check for date/time patterns (e.g. "Tue Dec 3 18:00:00 UTC 2025")
+                            import re
+                            date_pattern = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2}"
+                            
+                            if "root" in response_str or "uid=" in response_str:
                                 logger.critical(f"RCE CONFIRMED! Target returned suspicious data: {response_str[:100]}")
                                 crashes.append({
                                     "iteration": i,
                                     "payload": mutated_payload.hex(),
-                                    "error": "RCE Confirmed (Suspicious Response)",
+                                    "error": "RCE Confirmed (Root/UID)",
+                                    "metrics": result
+                                })
+                                return crashes
+                            elif re.search(date_pattern, response_str):
+                                match = re.search(date_pattern, response_str).group(0)
+                                logger.critical(f"RCE CONFIRMED! System Date/Time retrieved: {match}")
+                                crashes.append({
+                                    "iteration": i,
+                                    "payload": mutated_payload.hex(),
+                                    "error": f"RCE Confirmed (Date: {match})",
                                     "metrics": result
                                 })
                                 return crashes
@@ -208,6 +257,30 @@ class Fuzzer:
             time.sleep(0.1) # Prevent flooding
         
         return crashes
+
+    def run_parallel_fuzzing_session(self, base_payload, iterations=100, threads=10):
+        """
+        Runs fuzzing in parallel threads (The Swarm).
+        """
+        logger.info(f"Starting PARALLEL fuzzing: {threads} threads, {iterations} total iterations.")
+        
+        chunk_size = max(1, iterations // threads)
+        all_crashes = []
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+            futures = []
+            for _ in range(threads):
+                futures.append(executor.submit(self.run_fuzzing_session, base_payload, chunk_size))
+                
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        all_crashes.extend(result)
+                except Exception as e:
+                    logger.error(f"Thread error: {e}")
+                    
+        return all_crashes
 
 if __name__ == "__main__":
     fuzzer = Fuzzer()

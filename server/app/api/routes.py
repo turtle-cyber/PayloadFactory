@@ -142,8 +142,6 @@ async def optimize_exploit_endpoint(request: RLRequest):
         return {"optimized_payload": optimized_payload}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # --- Remote Agent Endpoint ---
 
@@ -186,3 +184,70 @@ async def receive_agent_logs(request: AgentLogRequest):
     except Exception as e:
         logger.error(f"Failed to process agent log: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Scan Orchestrator Endpoints ---
+
+from server.app.scan_orchestrator import get_orchestrator
+
+class StartScanRequest(BaseModel):
+    target_dir: str
+    project_name: str = None
+    quick_scan: bool = False
+    demo_mode: bool = False
+    remote_host: str = None
+    remote_port: int = None
+
+@router.post("/start-scan")
+async def start_scan(request: StartScanRequest):
+    """Start a new vulnerability scan."""
+    try:
+        if not os.path.isdir(request.target_dir):
+            raise HTTPException(status_code=400, detail="Target directory does not exist")
+        
+        orchestrator = get_orchestrator()
+        result = orchestrator.start_scan(
+            target_dir=request.target_dir,
+            project_name=request.project_name,
+            quick_scan=request.quick_scan,
+            demo_mode=request.demo_mode,
+            remote_host=request.remote_host,
+            remote_port=request.remote_port
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/scan-status/{scan_id}")
+async def get_scan_status(scan_id: str):
+    """Get the current status of a scan."""
+    try:
+        orchestrator = get_orchestrator()
+        result = orchestrator.get_scan_status(scan_id)
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get scan status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/stop-scan/{scan_id}")
+async def stop_scan(scan_id: str):
+    """Cancel a running scan."""
+    try:
+        orchestrator = get_orchestrator()
+        result = orchestrator.stop_scan(scan_id)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stop scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
