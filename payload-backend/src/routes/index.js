@@ -3,6 +3,7 @@ import scanRoutes from "./scan.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import findingsRoutes from "./findings.routes.js";
 import downloadRoutes from "./download.routes.js";
+import agentRoutes from "./agent.routes.js";
 
 const router = express.Router();
 
@@ -11,6 +12,7 @@ router.use("/scans", scanRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/findings", findingsRoutes);
 router.use("/download", downloadRoutes);
+router.use("/agent", agentRoutes);
 
 // Health check for API
 router.get("/health", (req, res) => {
