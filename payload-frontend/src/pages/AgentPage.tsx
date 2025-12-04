@@ -9,6 +9,9 @@ const AgentPage = () => {
             Run the following command on your linux based target machine
           </h2>
         </div>
+        <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
+          {/*Logs*/}
+        </div>
       </div>
     </div>
   );

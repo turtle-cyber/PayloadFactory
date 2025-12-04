@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { toast } from "../utils/toast";
 import { http } from "../utils/http";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface FormData {
   applicationName: string;
@@ -612,7 +619,7 @@ const ScanPage: React.FC = () => {
                 value={formData.applicationName}
                 onChange={handleInputChange}
                 disabled={isScanning || isUploading}
-                className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -652,9 +659,9 @@ const ScanPage: React.FC = () => {
                   className="w-4 h-4 bg-black/50 border border-gray-700/50 rounded text-red-500 focus:ring-red-500 disabled:opacity-50"
                 />
                 <span className="text-sm text-gray-300">
-                  Enable Attack Mode (Stage 3)
+                  Attack Mode (Stage 3)
                 </span>
-                <span className="text-sm text-gray-400">Target IP:</span>
+                <span className="text-sm text-gray-400">IP:</span>
                 <input
                   type="text"
                   name="targetIp"
@@ -882,34 +889,42 @@ const ScanPage: React.FC = () => {
               <label className="block text-sm text-gray-400 mb-3">
                 Export Format:
               </label>
-              <div className="relative">
-                <select
-                  name="exportFormat"
-                  value={formData.exportFormat}
-                  onChange={handleInputChange}
-                  className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white appearance-none focus:outline-none focus:border-cyan-500/50 transition-colors cursor-pointer"
-                >
-                  <option value="Excel.xlsx">Excel.xlsx</option>
-                  <option value="CSV.csv">CSV.csv</option>
-                  <option value="JSON.json">JSON.json</option>
-                  <option value="PDF.pdf">PDF.pdf</option>
-                </select>
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <svg
-                    className="w-4 h-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <Select
+                value={formData.exportFormat}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, exportFormat: value }))
+                }
+              >
+                <SelectTrigger className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500/50 transition-colors">
+                  <SelectValue placeholder="Select export format" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border border-gray-700/50">
+                  <SelectItem
+                    value="Excel.xlsx"
+                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
+                    Excel.xlsx
+                  </SelectItem>
+                  <SelectItem
+                    value="CSV.csv"
+                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
+                  >
+                    CSV.csv
+                  </SelectItem>
+                  <SelectItem
+                    value="JSON.json"
+                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
+                  >
+                    JSON.json
+                  </SelectItem>
+                  <SelectItem
+                    value="PDF.pdf"
+                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
+                  >
+                    PDF.pdf
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
