@@ -48,3 +48,6 @@ verify
 **/payload-uploads/
 **/payload-scans/
 intermediate_*.json
+test_fallback_findings.json
+test*
+scan_log.txt

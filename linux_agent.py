@@ -22,8 +22,48 @@ DEFAULT_LOG_FILES = [
     "/var/log/kern.log"
 ]
 
-# Keywords to filter for (unless verbose)
-ERROR_KEYWORDS = ["error", "fail", "panic", "segfault", "exception", "critical", "warning", "denied", "refused"]
+# ============================================================
+# FUZZING-SPECIFIC KEYWORDS (High Priority)
+# ============================================================
+# These indicate potential vulnerabilities found by fuzzer
+FUZZING_KEYWORDS = [
+    # Crashes and Memory Issues
+    "segfault", "segmentation fault", "core dumped", "sigsegv",
+    "sigabrt", "sigill", "sigbus", "sigfpe", "sigtrap",
+    "stack overflow", "buffer overflow", "heap overflow",
+    "use after free", "double free", "memory leak",
+    "out of memory", "oom",
+
+    # Java/Tomcat Specific
+    "outofmemoryerror", "stackoverflowerror", "nullpointerexception",
+    "illegalargumentexception", "securityexception",
+    "java.lang.error", "java.lang.exception",
+    "catalina.core", "tomcat",
+
+    # RCE Indicators
+    "command execution", "exec", "/bin/", "/usr/bin/",
+    "uid=", "gid=", "whoami", "id:",
+
+    # DoS Indicators
+    "too many open files", "connection refused", "resource temporarily unavailable",
+    "service unavailable", "timeout", "hang", "unresponsive",
+
+    # Path Traversal
+    "directory traversal", "../", "..\\", "web-inf", "etc/passwd",
+
+    # Authentication Issues
+    "authentication failed", "authorization failed", "access denied",
+    "permission denied", "unauthorized",
+
+    # SQL/Command Injection
+    "sql syntax", "mysql", "postgresql", "syntax error near",
+
+    # Critical System Events
+    "kernel panic", "oops", "bug:", "warn_on"
+]
+
+# Generic Error Keywords (Low Priority - Only send if fuzzing keywords not found)
+GENERIC_ERRORS = ["error", "fail", "exception", "critical"]
 
 def get_system_info():
     return {
@@ -32,6 +72,44 @@ def get_system_info():
         "os": platform.system(),
         "release": platform.release()
     }
+
+def categorize_log(line, matched_keyword):
+    """Categorize log entry for fuzzer"""
+    line_lower = line.lower()
+
+    # Crash categories
+    if any(k in line_lower for k in ["segfault", "sigsegv", "core dumped", "sigabrt"]):
+        return "CRASH"
+
+    # Memory issues
+    if any(k in line_lower for k in ["out of memory", "oom", "buffer overflow", "heap overflow", "use after free"]):
+        return "MEMORY_ERROR"
+
+    # DoS indicators
+    if any(k in line_lower for k in ["timeout", "hang", "too many", "service unavailable", "unresponsive"]):
+        return "DOS"
+
+    # RCE indicators
+    if any(k in line_lower for k in ["uid=", "gid=", "whoami", "/bin/", "exec"]):
+        return "RCE"
+
+    # Path traversal
+    if any(k in line_lower for k in ["../", "directory traversal", "web-inf", "etc/passwd"]):
+        return "PATH_TRAVERSAL"
+
+    # Authentication bypass
+    if any(k in line_lower for k in ["authentication failed", "unauthorized", "access denied"]):
+        return "AUTH_BYPASS"
+
+    # Injection
+    if any(k in line_lower for k in ["sql syntax", "syntax error"]):
+        return "INJECTION"
+
+    # Tomcat/Java specific
+    if any(k in line_lower for k in ["tomcat", "catalina", "outofmemoryerror", "nullpointerexception"]):
+        return "TOMCAT_ERROR"
+
+    return "GENERIC_ERROR"
 
 def get_resource_usage():
     """Returns CPU and RAM usage."""
@@ -107,24 +185,57 @@ def monitor_logs(server_url, log_files, verbose=False):
             if line:
                 line = line.strip()
                 if not line: continue
-                
-                # Filtering Logic
-                should_send = verbose
-                if not should_send:
-                    if any(k in line.lower() for k in ERROR_KEYWORDS):
-                        should_send = True
-                
+
+                # ============================================================
+                # SMART FILTERING LOGIC (Prioritized)
+                # ============================================================
+                line_lower = line.lower()
+                priority = "none"
+                matched_keyword = None
+                should_send = False
+
+                if verbose:
+                    # Verbose mode: send everything
+                    should_send = True
+                    priority = "verbose"
+                else:
+                    # Priority 1: FUZZING-SPECIFIC keywords (Always send)
+                    for keyword in FUZZING_KEYWORDS:
+                        if keyword.lower() in line_lower:
+                            should_send = True
+                            priority = "high"
+                            matched_keyword = keyword
+                            break
+
+                    # Priority 2: Generic errors (Send only if not too frequent)
+                    if not should_send:
+                        for keyword in GENERIC_ERRORS:
+                            if keyword.lower() in line_lower:
+                                # Rate limit generic errors (max 10 per minute)
+                                # For now, just send but could add throttling
+                                should_send = True
+                                priority = "low"
+                                matched_keyword = keyword
+                                break
+
                 if should_send:
+                    # Categorize the log for better fuzzer feedback
+                    category = categorize_log(line, matched_keyword)
+
                     payload = {
                         "metadata": system_info,
                         "type": "log",
                         "log_file": log_path,
                         "content": line,
+                        "priority": priority,
+                        "category": category,
+                        "matched_keyword": matched_keyword,
                         "timestamp": time.time()
                     }
                     try:
                         requests.post(server_url, json=payload, timeout=2)
-                        # print(f"Sent: {line[:50]}...")
+                        if priority == "high":
+                            print(f"[!] {category}: {matched_keyword} -> {line[:70]}...")
                     except Exception as e:
                         print(f"[!] Failed to send log: {e}")
         time.sleep(0.1)
