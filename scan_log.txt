@@ -1,11 +1,7 @@
-2025-12-04 14:48:57,498 - INFO - Connected to MongoDB: payloadfactoryDB
-2025-12-04 14:48:57,498 - INFO - Created new scan: 693152012034f60741fd78ed
-2025-12-04 14:48:57,498 - INFO - Running FULL SCAN (all files)
-2025-12-04 14:48:57,498 - INFO - Launching scan_stage_1.py...
-2025-12-04 14:49:09,172 - INFO - scan_stage_1.py completed successfully.
-2025-12-04 14:49:09,172 - INFO - Launching scan_stage_2.py...
-2025-12-04 14:49:13,329 - INFO - scan_stage_2.py completed successfully.
-2025-12-04 14:49:13,330 - INFO - Launching scan_stage_3.py...
-2025-12-04 14:49:27,388 - INFO - scan_stage_3.py completed successfully.
-2025-12-04 14:49:27,389 - INFO - ALL STAGES COMPLETED SUCCESSFULLY.
-2025-12-04 14:49:27,390 - INFO - MongoDB connection closed.
+2025-12-04 19:58:07,646 - INFO - Connected to MongoDB: payloadfactoryDB
+2025-12-04 19:58:07,670 - INFO - Created new scan: 69319a77f8524e1a60aa09fe
+2025-12-04 19:58:07,670 - INFO - Running FULL SCAN (all files)
+2025-12-04 19:58:07,670 - INFO - Launching scan_stage_1.py...
+2025-12-04 20:03:43,887 - ERROR - scan_stage_1.py failed with exit code 120.
+2025-12-04 20:03:43,887 - ERROR - Scan failed: Command '['C:\\Users\\intel\\Desktop\\PayloadFactoryUX\\.venv\\Scripts\\python.exe', 'C:\\Users\\intel\\Desktop\\PayloadFactoryUX\\scan_stage_1.py', 'C:/Users/intel/Desktop/PayloadFactoryUX/tomcat-main/tomcat-main', 'C:\\Users\\intel\\Desktop\\PayloadFactoryUX\\intermediate_findings.json', '--scan-id', '69319a77f8524e1a60aa09fe']' returned non-zero exit status 120.
+2025-12-04 20:03:43,890 - INFO - MongoDB connection closed.
