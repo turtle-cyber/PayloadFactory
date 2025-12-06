@@ -69,6 +69,7 @@ class FindingsService {
       return {
         severity,
         cwe: finding.cwe_id || "Unknown",
+        cve: finding.details.cve || "Unknown",
         file: finding.file_name || "Unknown",
         file_path: finding.file_path || "Unknown",
         line: finding.line_number || 0,

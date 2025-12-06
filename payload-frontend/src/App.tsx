@@ -14,6 +14,8 @@ import ResultsPage from "./pages/ResultsPage";
 import { homeBg, dashboardBg } from "./helpers/assetExport";
 import "./index.css";
 import FindingPage from "./pages/FindingPage";
+import AgentPage from "./pages/AgentPage";
+import ReconPage from "./pages/ReconPage";
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -29,7 +31,7 @@ const AppContent: React.FC = () => {
 
         {/* Background code image with fade effect */}
         <div
-          className="absolute inset-0 opacity-80"
+          className="absolute inset-0 opacity-100"
           style={{
             backgroundImage: `url(${backgroundImage})`,
             backgroundSize: "cover",
@@ -39,8 +41,8 @@ const AppContent: React.FC = () => {
         />
 
         {/* Gradient overlays for fade effect */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black opacity-40" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black opacity-20" />
+        {/* <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black opacity-40" /> */}
+        {/* <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black opacity-20" /> */}
 
         {/* Subtle grid pattern */}
         <div
@@ -72,6 +74,8 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/scan" element={<ScanPage />} />
+          <Route path="/recon" element={<ReconPage />} />
+          <Route path="/agent" element={<AgentPage />} />
           <Route path="/command-center" element={<CommandCenter />} />
           <Route path="/results" element={<ResultsPage />} />
           <Route path="/results/:scan_id" element={<FindingPage />} />

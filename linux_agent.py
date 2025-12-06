@@ -15,12 +15,33 @@ except ImportError:
 
 # Configuration
 DEFAULT_SERVER_URL = "http://localhost:8000/agent/logs"
-DEFAULT_LOG_FILES = [
+
+# System logs
+SYSTEM_LOG_FILES = [
     "/var/log/syslog",
     "/var/log/auth.log",
     "/var/log/dmesg",
     "/var/log/kern.log"
 ]
+
+# Tomcat-specific logs (covers common installation paths)
+TOMCAT_LOG_FILES = [
+    # Default Tomcat installation
+    "/opt/tomcat/logs/catalina.out",
+    "/opt/tomcat/logs/localhost_access_log*.txt",
+    "/opt/tomcat/logs/localhost.*.log",
+    # Ubuntu/Debian package install
+    "/var/log/tomcat*/catalina.out",
+    "/var/log/tomcat*/localhost_access_log*.txt",
+    # Generic Catalina paths
+    "/var/lib/tomcat*/logs/catalina.out",
+    # Docker/Custom
+    "/logs/catalina.out",
+    "/app/logs/catalina.out",
+]
+
+# Combine all log files
+DEFAULT_LOG_FILES = SYSTEM_LOG_FILES
 
 # ============================================================
 # FUZZING-SPECIFIC KEYWORDS (High Priority)
@@ -240,12 +261,25 @@ def monitor_logs(server_url, log_files, verbose=False):
                         print(f"[!] Failed to send log: {e}")
         time.sleep(0.1)
 
+def expand_log_paths(paths):
+    """Expand glob patterns in log paths."""
+    import glob as glob_module
+    expanded = []
+    for path in paths:
+        if "*" in path:
+            matches = glob_module.glob(path)
+            expanded.extend(matches)
+        else:
+            expanded.append(path)
+    return list(set(expanded))  # Remove duplicates
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PayloadFactory Linux Agent")
     parser.add_argument("--server", default=DEFAULT_SERVER_URL, help="Server URL (e.g. http://192.168.1.5:8000/agent/logs)")
     parser.add_argument("--files", nargs="+", help="Additional log files to monitor")
     parser.add_argument("--verbose", action="store_true", help="Send ALL logs (disable filtering)")
     parser.add_argument("--interval", type=int, default=5, help="Metric reporting interval (seconds)")
+    parser.add_argument("--tomcat", action="store_true", help="Enable Tomcat mode: monitor catalina.out, access logs, etc.")
     
     args = parser.parse_args()
     
@@ -254,10 +288,26 @@ if __name__ == "__main__":
     if not url.endswith("/agent/logs"):
         url = url.rstrip("/") + "/agent/logs"
     
-    # Merge default files with user files
-    target_files = DEFAULT_LOG_FILES
+    # Build target files list
+    target_files = list(SYSTEM_LOG_FILES)
+    
+    # Add Tomcat logs if --tomcat flag is set
+    if args.tomcat:
+        print("[*] TOMCAT MODE: Adding Tomcat-specific log files...")
+        target_files.extend(TOMCAT_LOG_FILES)
+    
+    # Add user-specified files
     if args.files:
         target_files.extend(args.files)
+    
+    # Expand glob patterns (e.g., /var/log/tomcat*/catalina.out)
+    target_files = expand_log_paths(target_files)
+    
+    print(f"[*] Monitoring {len(target_files)} log files:")
+    for f in target_files[:10]:  # Show first 10
+        print(f"    - {f}")
+    if len(target_files) > 10:
+        print(f"    ... and {len(target_files) - 10} more")
         
     # Start Metrics Thread
     t = threading.Thread(target=send_metrics, args=(url, args.interval), daemon=True)
@@ -267,3 +317,4 @@ if __name__ == "__main__":
         monitor_logs(url, target_files, args.verbose)
     except KeyboardInterrupt:
         print("\n[*] Agent stopped.")
+

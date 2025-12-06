@@ -11,6 +11,7 @@ from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
 from ml_engine.vuln_scanner import VulnScanner
 from ml_engine.exploit_generator import ExploitGenerator
+from ml_engine.exploit_executor import ExploitExecutor # For Instant Attack
 from ml_engine.db_manager import DatabaseManager
 from ml_engine.logger_config import setup_logger
 
@@ -20,7 +21,7 @@ db_manager = DatabaseManager()
 # Configure logging
 logger = setup_logger(__name__, "scan_log.json")
 
-def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, remote_port=None, scan_id=None, skip_other_files=False, demo_mode=False):
+def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, remote_port=None, scan_id=None, skip_other_files=False, demo_mode=False, model_id="hermes", auto_execute=False):
     """
     Stage 2: LLM Classification, Other Files Scan, Exploit Gen.
     
@@ -32,6 +33,8 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
         remote_port: Optional target port for exploit scripts
         scan_id: Optional database scan ID
         skip_other_files: If True, skip scanning additional file types (quick scan mode)
+        demo_mode: If True, enable paranoid scanning for specific targets
+        model_id: LLM model to use ("hermes" or "qwen")
         
     Deep Thinking:
     - skip_other_files defaults to False for backward compatibility
@@ -115,9 +118,9 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
             target_url = f"http://{remote_host}:{remote_port}"
             logger.info(f"Using target URL for exploits: {target_url}")
         
-        # Load LLM via VulnScanner
-        logger.info("Loading LLM (Hermes 3)...")
-        vuln_scanner = VulnScanner(mode="llm")
+        # Load LLM via VulnScanner with selected model
+        logger.info(f"Loading LLM (Model: {model_id})...")
+        vuln_scanner = VulnScanner(mode="llm", model_id=model_id)
         
         # Initialize ExploitGenerator sharing the SAME model/tokenizer
         logger.info("Initializing ExploitGenerator with shared model...")
@@ -126,6 +129,13 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
             tokenizer=vuln_scanner.llm_tokenizer,
             default_target=target_url
         )
+        
+        # Initialize ExploitExecutor for Instant Attack (Rapid Fire)
+        exploit_executor = None
+        if auto_execute and remote_host:
+            logger.info("INSTANT ATTACK ENABLED: Exploits will be executed immediately upon generation!")
+            exploit_executor = ExploitExecutor(timeout=30) # 30s timeout per exploit
+        
         
         # Import enhanced modules
         from ml_engine.exploit_context import extract_vulnerability_context
@@ -307,6 +317,29 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                             pf.write(payload_bytes)
                         logger.info(f"Payload saved: {payload_filename}")
                         
+                        # --- INSTANT ATTACK (RAPID FIRE) ---
+                        if exploit_executor and remote_host:
+                            logger.info(f"⚡ FAST-TRACK: Executing {exploit_filename} against target...")
+                            try:
+                                result = exploit_executor.execute_exploit(
+                                    exploit_path, 
+                                    target_ip=remote_host, 
+                                    target_port=remote_port
+                                )
+                                
+                                if result.rce_detected:
+                                    logger.critical(f"🌟 RCE CONFIRMED (Instant): {exploit_filename} 🌟")
+                                    logger.critical(f"Output: {result.output[:300]}")
+                                    # Update DB with success
+                                    # (Ideally update the exploit record we just created)
+                                elif result.success:
+                                     logger.info(f"Execution successful (No RCE): {exploit_filename}")
+                                else:
+                                     logger.warning(f"Execution failed: {result.error}")
+                            except Exception as exec_err:
+                                logger.error(f"Instant execution error: {exec_err}")
+                        # -----------------------------------
+                        
                     else:
                         logger.error(f"Enhanced generation failed, using fallback...")
                         # Fallback logic could be added here if needed
@@ -450,6 +483,18 @@ if __name__ == "__main__":
         help="Enable Demo Mode (Paranoid scanning for specific targets)"
     )
     
+    parser.add_argument(
+        "--model",
+        default="hermes",
+        help="LLM model ID to use (hermes or qwen)"
+    )
+    
+    parser.add_argument(
+        "--auto-execute",
+        action="store_true",
+        help="Automatically execute exploits immediately after generation (Instant Attack)"
+    )
+    
     args = parser.parse_args()
     
     scan_stage_2(
@@ -460,5 +505,7 @@ if __name__ == "__main__":
         args.remote_port, 
         args.scan_id,
         skip_other_files=args.skip_other_files,
-        demo_mode=args.demo_mode
+        demo_mode=args.demo_mode,
+        model_id=args.model,
+        auto_execute=args.auto_execute # Pass auto-execute flag
     )

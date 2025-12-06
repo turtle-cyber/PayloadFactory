@@ -48,7 +48,8 @@ class ScanOrchestrator:
         quick_scan: bool = False,
         demo_mode: bool = False,
         remote_host: Optional[str] = None,
-        remote_port: Optional[int] = None
+        remote_port: Optional[int] = None,
+        model: Optional[str] = "hermes"
     ) -> Dict[str, Any]:
         """
         Start a new scan in a background thread.
@@ -83,6 +84,7 @@ class ScanOrchestrator:
             "demo_mode": demo_mode,
             "remote_host": remote_host,
             "remote_port": remote_port,
+            "model": model or "hermes",
             "thread": None,
             "cancelled": False
         }
@@ -188,6 +190,8 @@ class ScanOrchestrator:
             ]
             if config["demo_mode"]:
                 stage2_cmd.append("--demo-mode")
+            if config.get("model"):
+                stage2_cmd.extend(["--model", config["model"]])
             if config["remote_host"]:
                 stage2_cmd.extend(["--remote-host", config["remote_host"]])
             if config["remote_port"]:

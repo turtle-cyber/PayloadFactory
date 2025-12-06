@@ -100,6 +100,23 @@ const formatFileSize = (bytes: number): string => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 };
 
+const formatStatus = (status: string) => {
+  const formattedStatus = status.toLowerCase();
+  if (formattedStatus === "completed") {
+    return "bg-green-500/20 text-green-400";
+  } else if (formattedStatus === "failed") {
+    return "bg-red-500/20 text-red-400";
+  } else if (formattedStatus === "stage-1") {
+    return "bg-yellow-500/20 text-yellow-400";
+  } else if (formattedStatus === "stage-2") {
+    return "bg-orange-500/20 text-orange-400";
+  } else if (formattedStatus === "stage-3") {
+    return "bg-blue-500/20 text-blue-400";
+  } else {
+    return "bg-gray-500/20 text-gray-400";
+  }
+};
+
 const ResultsPage: React.FC = () => {
   const { scanData, scanLoading, fetchScans } = useGetScans();
   const navigate = useNavigate();
@@ -214,15 +231,12 @@ const ResultsPage: React.FC = () => {
                       </td>
                       <td className="py-4 px-4">
                         <span
-                          className={`px-2 py-1 rounded text-xs ${
-                            finding.status === "Pending"
-                              ? "bg-yellow-500/20 text-yellow-400"
-                              : "bg-green-500/20 text-green-400"
-                          }`}
+                          className={`px-2 py-1 rounded text-xs ${formatStatus(
+                            finding.status
+                          )}`}
                         >
-                          {finding.status === "Pending"
-                            ? "Processing"
-                            : "Completed"}
+                          {finding.status.charAt(0).toUpperCase() +
+                            finding.status.slice(1)}
                         </span>
                       </td>
                       <td className="py-4 px-4 text-gray-400">

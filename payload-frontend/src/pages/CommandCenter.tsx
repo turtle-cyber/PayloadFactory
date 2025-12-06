@@ -24,6 +24,13 @@ interface ReconAnalytics {
     dayOfWeek: number;
     week: number;
     intensity: number;
+    scanCount: number;
+    exploitCount: number;
+    date: string;
+    scans: Array<{
+      name: string;
+      exploits: number;
+    }>;
   }>;
   exploitsByType: Array<{
     cwe: string;
@@ -184,14 +191,32 @@ const CommandCenter: React.FC = () => {
       ? (() => {
           const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
           const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
-          const data: [number, number, number][] = [];
+          const data: Array<{
+            value: [number, number, number];
+            scanCount: number;
+            scans: Array<{ name: string; exploits: number }>;
+            date: string;
+          }> = [];
 
           reconAnalyticsData.severityHeatmap.forEach(
-            (item: { dayOfWeek: number; week: number; intensity: number }) => {
+            (item: {
+              dayOfWeek: number;
+              week: number;
+              intensity: number;
+              scanCount: number;
+              exploitCount: number;
+              date: string;
+              scans: Array<{ name: string; exploits: number }>;
+            }) => {
               // dayOfWeek: 1=Sunday, 2=Monday, etc. Convert to 0=Monday
               const dayIndex = item.dayOfWeek === 1 ? 6 : item.dayOfWeek - 2;
               const weekIndex = Math.min(item.week % 4, 3);
-              data.push([dayIndex, weekIndex, Math.round(item.intensity * 10)]);
+              data.push({
+                value: [dayIndex, weekIndex, Math.round(item.intensity * 10)],
+                scanCount: item.scanCount,
+                scans: item.scans,
+                date: item.date,
+              });
             }
           );
 

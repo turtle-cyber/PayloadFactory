@@ -158,9 +158,14 @@ def get_db():
 
 class AgentLogRequest(BaseModel):
     metadata: dict
-    log_file: str
+    type: str = "log"  # log or metric
+    log_file: str = None
     content: str
     timestamp: float
+    priority: str = None  # high, low, verbose, none
+    category: str = None  # CRASH, RCE, DOS, etc.
+    matched_keyword: str = None
+    metrics: dict = None  # For metric type
 
 # Configure logger for agent logs (to be visible in GUI)
 from ml_engine.logger_config import setup_logger
@@ -197,6 +202,7 @@ class StartScanRequest(BaseModel):
     demo_mode: bool = False
     remote_host: str = None
     remote_port: int = None
+    model: str = "hermes"
 
 @router.post("/start-scan")
 async def start_scan(request: StartScanRequest):
@@ -212,7 +218,8 @@ async def start_scan(request: StartScanRequest):
             quick_scan=request.quick_scan,
             demo_mode=request.demo_mode,
             remote_host=request.remote_host,
-            remote_port=request.remote_port
+            remote_port=request.remote_port,
+            model=request.model
         )
         return result
     except HTTPException:

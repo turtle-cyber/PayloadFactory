@@ -48,7 +48,11 @@ class PayloadFactoryApp(ctk.CTk):
         self.tab_view.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
         
         self.scan_tab = self.tab_view.add("Scan Mode")
+        self.network_tab = self.tab_view.add("Network Scan")
         self.agent_tab = self.tab_view.add("Agent Mode")
+        
+        # --- NETWORK SCAN TAB CONTENT ---
+        self._setup_network_tab()
         
         # --- SCAN TAB CONTENT ---
         self.top_frame = ctk.CTkFrame(self.scan_tab, fg_color="transparent")
@@ -101,6 +105,24 @@ class PayloadFactoryApp(ctk.CTk):
             fg_color="red", hover_color="darkred"
         )
         self.demo_mode_check.pack(side="left", padx=(20, 10))
+        
+        # LLM Model Selector
+        self.model_label = ctk.CTkLabel(
+            self.quick_scan_frame, 
+            text="LLM:",
+            font=ctk.CTkFont(size=12)
+        )
+        self.model_label.pack(side="left", padx=(20, 5))
+        
+        self.model_var = ctk.StringVar(value="Hermes 3")
+        self.model_dropdown = ctk.CTkOptionMenu(
+            self.quick_scan_frame,
+            values=["Hermes 3", "Qwen2.5-VL"],
+            variable=self.model_var,
+            width=130,
+            font=ctk.CTkFont(size=12)
+        )
+        self.model_dropdown.pack(side="left")
 
         # Attack Mode Options (Inside Scan Tab)
         self.attack_frame = ctk.CTkFrame(self.scan_tab, fg_color="transparent")
@@ -118,7 +140,18 @@ class PayloadFactoryApp(ctk.CTk):
         self.port_label = ctk.CTkLabel(self.attack_frame, text="Port:")
         self.port_label.pack(side="left", padx=(0, 5))
         self.port_entry = ctk.CTkEntry(self.attack_frame, width=60, placeholder_text="80")
-        self.port_entry.pack(side="left")
+        self.port_entry.pack(side="left", padx=(0, 15))
+        
+        # Auto-Execute Checkbox
+        self.auto_execute_var = ctk.BooleanVar(value=False)
+        self.auto_execute_check = ctk.CTkCheckBox(
+            self.attack_frame, 
+            text="⚡ Auto-Execute",
+            variable=self.auto_execute_var,
+            fg_color="orange", hover_color="darkorange",
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.auto_execute_check.pack(side="left", padx=(0, 5))
         
         self.toggle_attack_inputs() # Initialize state
 
@@ -186,6 +219,7 @@ class PayloadFactoryApp(ctk.CTk):
         state = "normal" if self.attack_mode_var.get() else "disabled"
         self.ip_entry.configure(state=state)
         self.port_entry.configure(state=state)
+        self.auto_execute_check.configure(state=state)
 
     def browse_folder(self):
         folder_selected = filedialog.askdirectory()
@@ -256,6 +290,16 @@ class PayloadFactoryApp(ctk.CTk):
             
         if self.demo_mode_var.get():
             cmd.append("--demo-mode")
+        
+        # Propagate LLM Model Selection
+        model_map = {"Hermes 3": "hermes", "Qwen2.5-VL": "qwen"}
+        selected_model = model_map.get(self.model_var.get(), "hermes")
+        cmd.extend(["--model", selected_model])
+        
+        # Auto-Execute Mode (Run exploits against target)
+        if self.auto_execute_var.get() and remote_host:
+            cmd.append("--auto-execute")
+            self.log("⚡ AUTO-EXECUTE MODE: Exploits will run against target!")
         
         try:
             # Force UTF-8 encoding for the subprocess output
@@ -341,6 +385,280 @@ class PayloadFactoryApp(ctk.CTk):
 
         # Continue polling
         self.after(2000, self.poll_agent_logs)
+    
+    def _setup_network_tab(self):
+        """Setup the Network Scan tab for IP/Port based reconnaissance."""
+        # --- Target Input ---
+        self.net_input_frame = ctk.CTkFrame(self.network_tab, fg_color="transparent")
+        self.net_input_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(self.net_input_frame, text="Target IP:", font=ctk.CTkFont(size=14)).pack(side="left", padx=(0, 5))
+        self.net_ip_entry = ctk.CTkEntry(self.net_input_frame, width=150, placeholder_text="192.168.1.100")
+        self.net_ip_entry.pack(side="left", padx=(0, 15))
+        
+        ctk.CTkLabel(self.net_input_frame, text="Ports:", font=ctk.CTkFont(size=14)).pack(side="left", padx=(0, 5))
+        self.net_ports_entry = ctk.CTkEntry(self.net_input_frame, width=200, placeholder_text="1-1000 or 80,443,8080")
+        self.net_ports_entry.insert(0, "21,22,80,443,3306,8080")
+        self.net_ports_entry.pack(side="left", padx=(0, 15))
+        
+        self.net_scan_btn = ctk.CTkButton(
+            self.net_input_frame, 
+            text="🔍 Scan Services", 
+            width=130,
+            fg_color="green", 
+            hover_color="darkgreen",
+            command=self.run_network_scan
+        )
+        self.net_scan_btn.pack(side="left")
+        
+        # --- Results + LLM Analysis Frame ---
+        self.net_results_frame = ctk.CTkFrame(self.network_tab)
+        self.net_results_frame.pack(fill="both", expand=True, pady=10)
+        
+        # Left: Service Results
+        self.net_services_label = ctk.CTkLabel(self.net_results_frame, text="Discovered Services:", font=ctk.CTkFont(size=12, weight="bold"))
+        self.net_services_label.pack(anchor="w", padx=10, pady=(10, 5))
+        
+        self.net_services_box = ctk.CTkTextbox(self.net_results_frame, height=150, state="disabled")
+        self.net_services_box.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Right: LLM Analysis
+        self.net_analysis_label = ctk.CTkLabel(self.net_results_frame, text="LLM Analysis (Exploitation Steps + Source Links):", font=ctk.CTkFont(size=12, weight="bold"))
+        self.net_analysis_label.pack(anchor="w", padx=10, pady=(10, 5))
+        
+        self.net_analysis_box = ctk.CTkTextbox(self.net_results_frame, height=200, state="disabled")
+        self.net_analysis_box.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # --- Mode Selection ---
+        self.net_mode_frame = ctk.CTkFrame(self.network_tab, fg_color="transparent")
+        self.net_mode_frame.pack(fill="x", pady=10)
+        
+        self.net_mode_var = ctk.StringVar(value="whitebox")
+        
+        self.net_whitebox_radio = ctk.CTkRadioButton(
+            self.net_mode_frame,
+            text="📂 Whitebox (I have source code)",
+            variable=self.net_mode_var,
+            value="whitebox",
+            command=self.toggle_net_mode
+        )
+        self.net_whitebox_radio.pack(side="left", padx=(0, 20))
+        
+        self.net_source_entry = ctk.CTkEntry(self.net_mode_frame, width=300, placeholder_text="Path to source code folder...")
+        self.net_source_entry.pack(side="left", padx=(0, 5))
+        
+        self.net_browse_btn = ctk.CTkButton(self.net_mode_frame, text="Browse", width=80, command=self.browse_net_source)
+        self.net_browse_btn.pack(side="left", padx=(0, 30))
+        
+        self.net_blackbox_radio = ctk.CTkRadioButton(
+            self.net_mode_frame,
+            text="🔒 Blackbox (No source code)",
+            variable=self.net_mode_var,
+            value="blackbox",
+            command=self.toggle_net_mode
+        )
+        self.net_blackbox_radio.pack(side="left")
+        
+        # --- Continue Button ---
+        self.net_continue_btn = ctk.CTkButton(
+            self.network_tab,
+            text="Continue to Exploitation →",
+            width=200,
+            fg_color="blue",
+            hover_color="darkblue",
+            command=self.continue_net_exploitation
+        )
+        self.net_continue_btn.pack(pady=15)
+        
+        # Initialize state
+        self.toggle_net_mode()
+    
+    def toggle_net_mode(self):
+        """Enable/disable source path input based on mode selection."""
+        if self.net_mode_var.get() == "whitebox":
+            self.net_source_entry.configure(state="normal")
+            self.net_browse_btn.configure(state="normal")
+        else:
+            self.net_source_entry.configure(state="disabled")
+            self.net_browse_btn.configure(state="disabled")
+    
+    def browse_net_source(self):
+        """Browse for source code folder."""
+        folder = filedialog.askdirectory()
+        if folder:
+            self.net_source_entry.delete(0, "end")
+            self.net_source_entry.insert(0, folder)
+    
+    def run_network_scan(self):
+        """Run network scan and LLM analysis."""
+        ip = self.net_ip_entry.get().strip()
+        ports = self.net_ports_entry.get().strip()
+        
+        if not ip:
+            self._update_net_services("Error: Please enter a target IP address.")
+            return
+        
+        self.net_scan_btn.configure(state="disabled", text="Scanning...")
+        self._update_net_services(f"Scanning {ip}:{ports}...\n")
+        self._update_net_analysis("Waiting for scan to complete...")
+        
+        def scan_thread():
+            try:
+                from ml_engine.network_scanner import NetworkScanner
+                
+                # Parse ports
+                port_list = None
+                if ports:
+                    if "-" in ports:
+                        start, end = ports.split("-")
+                        port_list = list(range(int(start), int(end) + 1))
+                    else:
+                        port_list = [int(p.strip()) for p in ports.split(",")]
+                
+                scanner = NetworkScanner()
+                results = scanner.scan_target(ip, ports=port_list)
+                
+                # Format results
+                output_lines = []
+                for svc in results:
+                    svc_dict = svc.__dict__ if hasattr(svc, '__dict__') else svc
+                    line = f"Port {svc_dict.get('port', 'N/A')}: {svc_dict.get('product', svc_dict.get('service', 'unknown'))} {svc_dict.get('version', '')}"
+                    output_lines.append(line)
+                
+                if not output_lines:
+                    output_lines = ["No open ports found."]
+                
+                self.after(0, lambda: self._update_net_services("\n".join(output_lines)))
+                
+                # Run LLM analysis
+                self.after(0, lambda: self._update_net_analysis("Running LLM analysis... (this may take a moment)"))
+                
+                from ml_engine.service_analyzer import ServiceAnalyzer
+                analyzer = ServiceAnalyzer(model_id="hermes")  # Use Hermes for text-only analysis
+                
+                analysis_output = []
+                for svc in results:
+                    svc_dict = svc.__dict__ if hasattr(svc, '__dict__') else svc
+                    analysis = analyzer.analyze_service(svc_dict)
+                    analysis_output.append(analyzer.format_analysis(analysis))
+                
+                if not analysis_output:
+                    analysis_output = ["No services to analyze."]
+                
+                self.after(0, lambda: self._update_net_analysis("\n\n".join(analysis_output)))
+                
+            except Exception as e:
+                self.after(0, lambda: self._update_net_services(f"Scan error: {str(e)}"))
+                self.after(0, lambda: self._update_net_analysis(f"Analysis error: {str(e)}"))
+            finally:
+                self.after(0, lambda: self.net_scan_btn.configure(state="normal", text="🔍 Scan Services"))
+        
+        threading.Thread(target=scan_thread, daemon=True).start()
+    
+    def _update_net_services(self, text):
+        """Update services textbox."""
+        self.net_services_box.configure(state="normal")
+        self.net_services_box.delete("1.0", "end")
+        self.net_services_box.insert("1.0", text)
+        self.net_services_box.configure(state="disabled")
+    
+    def _update_net_analysis(self, text):
+        """Update analysis textbox."""
+        self.net_analysis_box.configure(state="normal")
+        self.net_analysis_box.delete("1.0", "end")
+        self.net_analysis_box.insert("1.0", text)
+        self.net_analysis_box.configure(state="disabled")
+    
+    def continue_net_exploitation(self):
+        """Continue to exploitation based on selected mode."""
+        mode = self.net_mode_var.get()
+        ip = self.net_ip_entry.get().strip()
+        ports = self.net_ports_entry.get().strip()
+        
+        if mode == "whitebox":
+            source_path = self.net_source_entry.get().strip()
+            if not source_path or not os.path.exists(source_path):
+                self._update_net_analysis("Error: Please select a valid source code folder for Whitebox mode.")
+                return
+            
+            # Switch to Scan Mode tab and populate
+            self.tab_view.set("Scan Mode")
+            self.folder_entry.delete(0, "end")
+            self.folder_entry.insert(0, source_path)
+            
+            # Set attack mode with target IP/Port
+            if ip:
+                self.attack_mode_var.set(True)
+                self.toggle_attack_inputs()
+                self.ip_entry.delete(0, "end")
+                self.ip_entry.insert(0, ip)
+                if ports:
+                    first_port = ports.split(",")[0].split("-")[0]
+                    self.port_entry.delete(0, "end")
+                    self.port_entry.insert(0, first_port)
+            
+            self.log(f"\n--- WHITEBOX MODE: Source from {source_path} ---")
+            self.log(f"--- Target: {ip} ---")
+            
+            # Automatically start the scan (Stage 1)
+            self.after(500, self.start_scan)  # Small delay to let UI update
+        else:
+            # Blackbox mode - run CVE matching + exploit lookup + fuzzing
+            self.run_blackbox_analysis(ip, ports)
+
+    def run_blackbox_analysis(self, ip: str, ports: str):
+        """Run blackbox analysis with CVE matching, exploit lookup, and fuzzing."""
+        self._update_net_analysis("--- BLACKBOX MODE ---\nStarting analysis...\n\n- CVE Matching\n- Exploit Lookup\n- Blind Fuzzing")
+        self.net_continue_btn.configure(state="disabled", text="Analyzing...")
+        
+        def blackbox_thread():
+            try:
+                from ml_engine.blackbox_exploitation import BlackboxExploiter
+                from ml_engine.network_scanner import NetworkScanner
+                from dataclasses import asdict
+                
+                # Parse ports
+                port_list = None
+                if ports:
+                    if "-" in ports:
+                        start, end = ports.split("-")
+                        port_list = list(range(int(start), int(end) + 1))
+                    else:
+                        port_list = [int(p.strip()) for p in ports.split(",")]
+                
+                scanner = NetworkScanner()
+                services = scanner.scan_target(ip, ports=port_list)
+                
+                # Convert to dict format
+                service_dicts = []
+                for svc in services:
+                    if hasattr(svc, '__dict__'):
+                        service_dicts.append(svc.__dict__)
+                    elif hasattr(svc, '__dataclass_fields__'):
+                        service_dicts.append(asdict(svc))
+                    else:
+                        service_dicts.append(svc)
+                
+                if not service_dicts:
+                    self.after(0, lambda: self._update_net_analysis("No services found to analyze."))
+                    return
+                
+                # Run blackbox analysis
+                exploiter = BlackboxExploiter()
+                output_lines = []
+                
+                for svc_dict in service_dicts:
+                    result = exploiter.analyze_service(svc_dict, ip)
+                    output_lines.append(exploiter.format_results(result))
+                
+                self.after(0, lambda: self._update_net_analysis("\n\n".join(output_lines)))
+                
+            except Exception as e:
+                self.after(0, lambda: self._update_net_analysis(f"Blackbox analysis error: {str(e)}"))
+            finally:
+                self.after(0, lambda: self.net_continue_btn.configure(state="normal", text="Continue to Exploitation →"))
+        
+        threading.Thread(target=blackbox_thread, daemon=True).start()
 
 if __name__ == "__main__":
     app = PayloadFactoryApp()

@@ -12,7 +12,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
-    def __init__(self, uri=None, db_name="payloadfactoryDB"):
+    def __init__(self, uri=None, db_name="payloadfactory"):
         # Use env var if provided, else default
         self.uri = uri or os.getenv("MONGO_URI", "mongodb://admin:admin@localhost:27017/?authSource=admin")
         self.db_name = db_name

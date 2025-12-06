@@ -8,10 +8,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class VulnScanner:
-    def __init__(self, mode="hybrid", unixcoder_path="microsoft/unixcoder-base", graphcodebert_path="microsoft/graphcodebert-base", model=None, tokenizer=None):
+    def __init__(self, mode="hybrid", unixcoder_path="microsoft/unixcoder-base", graphcodebert_path="microsoft/graphcodebert-base", model=None, tokenizer=None, model_id=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Using device: {self.device}")
         self.mode = mode
+        
+        # Model selection
+        from ml_engine.model_config import DEFAULT_MODEL
+        self.model_id = model_id if model_id else DEFAULT_MODEL
 
         # Initialize model placeholders
         self.unix_model = None
@@ -52,9 +56,15 @@ class VulnScanner:
             self.graph_model = AutoModelForSequenceClassification.from_pretrained(graphcodebert_path, num_labels=2).to(self.device)
 
     def _load_llm(self):
-        # ... (Existing implementation) ...
-        model_path = r"E:\GRAND_AI_MODELS\hermes-3-llama-3.1-8b"
-        logger.info(f"Loading Hermes 3 for multi-language scanning from {model_path}...")
+        """Load LLM based on model_id from config registry with optional LoRA adapter."""
+        from ml_engine.model_config import get_model_config
+        import os
+        
+        config = get_model_config(self.model_id)
+        model_path = config["base_path"]
+        adapter_path = config.get("adapter_path_full")
+        
+        logger.info(f"Loading {config['name']} for multi-language scanning from {model_path}...")
         
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -63,12 +73,22 @@ class VulnScanner:
             bnb_4bit_use_double_quant=True,
         )
         
-        self.llm_tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.llm_tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
         self.llm_model = AutoModelForCausalLM.from_pretrained(
             model_path,
             quantization_config=quantization_config,
-            device_map="auto"
+            device_map="auto",
+            trust_remote_code=True
         )
+        
+        # Apply LoRA adapter if specified
+        if adapter_path and os.path.exists(adapter_path):
+            logger.info(f"Applying LoRA adapter from {adapter_path}...")
+            from peft import PeftModel
+            self.llm_model = PeftModel.from_pretrained(self.llm_model, adapter_path)
+            logger.info("LoRA adapter loaded successfully.")
+        elif adapter_path:
+            logger.warning(f"Adapter path specified but not found: {adapter_path}")
 
     def scan_with_llm(self, code_snippet, file_path="", paranoid_mode=False):
         """
@@ -353,55 +373,125 @@ Code:
                 
         return vulnerabilities
 
+    def _get_llm_exploit_details(self, code_snippet: str, vuln_type: str) -> str:
+        """
+        Ask LLM for exploit details ONLY (not for CVE/CWE classification).
+        Used when we have a verified pattern match and just want more context.
+        """
+        if not self.llm_model:
+            return None
+            
+        prompt = f"""Below is an instruction. Write a response that completes the request.
+
+### Instruction:
+A {vuln_type} vulnerability was detected in the following code.
+Provide a brief 2-3 sentence explanation of:
+1. How this vulnerability can be exploited
+2. What the impact would be
+
+Code:
+```
+{code_snippet[:5000]}
+```
+
+### Response:
+"""
+        try:
+            inputs = self.llm_tokenizer(prompt, return_tensors="pt").to(self.device)
+            with torch.no_grad():
+                outputs = self.llm_model.generate(
+                    **inputs,
+                    max_new_tokens=256,
+                    temperature=0.1,
+                    do_sample=False
+                )
+            response = self.llm_tokenizer.decode(outputs[0], skip_special_tokens=True)
+            if "### Response:" in response:
+                response = response.split("### Response:")[-1].strip()
+            return response[:500]  # Limit length
+        except Exception as e:
+            logger.debug(f"Failed to get LLM details: {e}")
+            return None
+
     def classify_vulnerability(self, code_snippet, paranoid_mode=False):
         """
-        Asks the LLM to classify the vulnerability in the given snippet.
+        Classifies vulnerability using PATTERN-FIRST approach.
+        
+        1. First, try pattern-based classification (100% accurate CVE/CWE)
+        2. If pattern matches, use verified CVE/CWE from database
+        3. Only use LLM for generating exploit details/explanation
+        4. If no pattern matches, fall back to LLM (but mark as "unverified")
         """
+        from ml_engine.cve_database import classify_by_pattern
+        
+        # =====================================================================
+        # STEP 1: Pattern-Based Classification (Preferred - 100% Accurate)
+        # =====================================================================
+        pattern_result = classify_by_pattern(code_snippet)
+        
+        if pattern_result:
+            logger.info(f"[PATTERN] Verified classification: {pattern_result['type']} ({pattern_result['cwe']})")
+            
+            # Use verified CVE/CWE from pattern database
+            # Optionally ask LLM for exploit details only
+            details = f"{pattern_result['type']} detected. {pattern_result.get('exploit_hints', '')}"
+            
+            # If we want LLM to add more context (optional, can skip for speed)
+            if self.llm_model and not paranoid_mode:
+                try:
+                    llm_details = self._get_llm_exploit_details(code_snippet, pattern_result['type'])
+                    if llm_details:
+                        details = llm_details
+                except:
+                    pass  # Use pattern-based details if LLM fails
+            
+            return [{
+                "cwe": pattern_result["cwe"],
+                "cve": "N/A",  # We don't guess CVE - only verified from version detection
+                "owasp": pattern_result["owasp"],
+                "severity": pattern_result["severity"],
+                "type": pattern_result["type"],
+                "details": details,
+                "confidence": "high",
+                "source": "pattern_database"
+            }]
+        
+        # =====================================================================
+        # STEP 2: No Pattern Match - Use LLM as Fallback (Mark as "unverified")
+        # =====================================================================
+        logger.info("[PATTERN] No pattern match - falling back to LLM classification")
+        
         if not self.llm_model:
             self._load_llm()
             
         system_role = "You are a Security Analyst."
         if paranoid_mode:
-            system_role = "You are a PARANOID Security Auditor. Your goal is to find ANY potential vulnerability, no matter how small. Assume all input is malicious. Do not give the benefit of the doubt."
+            system_role = "You are a PARANOID Security Auditor. Your goal is to find ANY potential vulnerability, no matter how small."
 
+        # Simplified prompt - just ask for vulnerability type and details, NOT CVE
         prompt = f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
 ### Instruction:
 {system_role} Analyze the provided code snippet for security vulnerabilities.
 
-**ANALYSIS FRAMEWORK:**
-1. **Code Comprehension**: Understand what the code does and where user input enters.
-2. **Vulnerability Check**: Check for patterns like SQL Injection, XSS, Command Injection, Path Traversal, etc.
-3. **False Positive Check**: Is this test code? Is the input sanitized? Is the dangerous function actually reachable?
-4. **Classification**: If vulnerable, identify the specific CWE.
-5. **Owasp Check**: Is this a known OWASP Top 10 issue? If so, provide the specific category.
-6. **Severity Check**: Assign a severity level based on the vulnerability.
-7. **Details Check**: Provide a brief explanation of the vulnerability and how to exploit it.
-
 **OUTPUT FORMAT (JSON ONLY):**
 If VULNERABLE:
 {{
-    "reasoning": "Multi-step analysis: (1) What the code does, (2) Where input enters, (3) Why it's vulnerable, (4) How to exploit",
-    "cwe": "CWE-XXX (SPECIFIC, e.g., CWE-917 for EL Injection, NOT CWE-74)",
-    "cve": "CVE-YYYY-XXXXX if known, otherwise 'N/A'",
-    "owasp": "A##:2021-Category"or any other owasp that matches,
+    "vulnerable": true,
+    "type": "Vulnerability Name (e.g., 'EL Injection', 'SQL Injection')",
     "severity": "Critical/High/Medium/Low",
-    "type": "SPECIFIC Vulnerability Name (e.g., 'EL Injection', 'SQL Injection', NOT 'Injection')",
-    "details": "Brief explanation of exploit path and impact (2-3 sentences)"
+    "details": "Brief explanation of the vulnerability and how to exploit it"
 }}
 
 If SAFE:
 {{
     "vulnerable": false,
-    "type": "Safe",
-    "cwe": "Safe",
-    "severity": "None",
-    
+    "type": "Safe"
 }}
 
 **CODE TO ANALYZE:**
 ```
-{code_snippet[:20000]}
+{code_snippet[:15000]}
 ```
 
 ### Response:
@@ -411,7 +501,7 @@ If SAFE:
         with torch.no_grad():
             outputs = self.llm_model.generate(
                 **inputs, 
-                max_new_tokens=2024,  # Increased to accommodate full JSON with CVE/OWASP/Severity
+                max_new_tokens=1024,  # Reduced since we don't need CVE/OWASP
                 temperature=0.1,
                 do_sample=False
             )
@@ -420,170 +510,71 @@ If SAFE:
         if "### Response:" in response:
             response = response.split("### Response:")[-1].strip()
         
-        # SANITIZE: Ensure UTF-8 compatibility by replacing problematic characters
-        # Replace Windows-1252 smart quotes and other non-UTF-8 chars
+        # SANITIZE: Ensure UTF-8 compatibility
         response = response.encode('utf-8', errors='ignore').decode('utf-8')
-        response = response.replace('\x91', "'").replace('\x92', "'")  # Smart single quotes
-        response = response.replace('\x93', '"').replace('\x94', '"')  # Smart double quotes
-        response = response.replace('\x96', '-').replace('\x97', '-')  # Em/en dashes
+        response = response.replace('\x91', "'").replace('\x92', "'")
+        response = response.replace('\x93', '"').replace('\x94', '"')
+        response = response.replace('\x96', '-').replace('\x97', '-')
             
-        # DEBUG: Log raw response to understand why it's failing
-        logger.info(f"RAW LLM RESPONSE for snippet: {response[:200]}...")
+        logger.info(f"[LLM FALLBACK] Response: {response[:200]}...")
             
-        # Basic parsing (LLM might not always output perfect JSON, so we fallback)
         import json
         import re
         
-        # Try to find JSON block first
         try:
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group(0))
                 
-                # ============================================================
-                # UNIVERSAL VULNERABILITY DETECTION SYSTEM
-                # Post-processing to ensure accurate classification
-                # ============================================================
+                is_vulnerable = data.get("vulnerable", True)  # Default to vulnerable if not specified
                 
-                # Define vulnerability patterns with keywords, CWE, and severity
-                # Define vulnerability patterns with keywords, CWE, and severity
-                # REFINED: Removed generic keywords to prevent false positives
-                VULN_PATTERNS = {
-                    "EL Injection": {
-                        "keywords": ["createValueExpression", "ELProcessor", "ExpressionFactory"],
-                        "cwe": "CWE-917",
-                        "severity": "High",
-                        "owasp": "A03:2021-Injection"
-                    },
-                    "SQL Injection": {
-                        "keywords": ["executeQuery", "executeUpdate", "Statement.execute"],
-                        "anti_keywords": ["PreparedStatement", "setString", "setInt"], 
-                        "cwe": "CWE-89",
-                        "severity": "Critical",
-                        "owasp": "A03:2021-Injection"
-                    },
-                    "XSS": {
-                        "keywords": ["innerHTML", "document.write", "response.getWriter().print"],
-                        "cwe": "CWE-79",
-                        "severity": "High",
-                        "owasp": "A03:2021-Injection"
-                    },
-                    "Path Traversal": {
-                        "keywords": ["../../", "..\\", "rootPath", "basePath"], # Stricter keywords
-                        "cwe": "CWE-22",
-                        "severity": "High",
-                        "owasp": "A01:2021-Broken Access Control"
-                    },
-                    "Deserialization": {
-                        "keywords": ["readObject", "XMLDecoder", "unserialize"],
-                        "cwe": "CWE-502",
-                        "severity": "Critical",
-                        "owasp": "A08:2021-Software and Data Integrity Failures"
-                    },
-                    "Command Injection": {
-                        "keywords": ["Runtime.exec", "ProcessBuilder", "shell_exec", "system("],
-                        "cwe": "CWE-78",
-                        "severity": "Critical",
-                        "owasp": "A03:2021-Injection"
-                    },
-                    "XXE": {
-                        "keywords": ["setFeature", "XMLInputFactory", "!ENTITY"],
-                        "cwe": "CWE-611",
-                        "severity": "High",
-                        "owasp": "A05:2021-Security Misconfiguration"
-                    },
-                    "SSRF": {
-                        "keywords": ["openConnection", "HttpClient", "169.254.169.254"],
-                        "cwe": "CWE-918",
-                        "severity": "High",
-                        "owasp": "A10:2021-Server-Side Request Forgery"
-                    }
-                }
-                
-                # Check each pattern
-                detected_vuln = None
-                for vuln_type, pattern in VULN_PATTERNS.items():
-                    # Check if all keywords are present
-                    keywords_found = any(kw in code_snippet for kw in pattern["keywords"])
-                    
-                    # Check anti-keywords (for SQL Injection)
-                    anti_keywords_found = False
-                    if "anti_keywords" in pattern:
-                        anti_keywords_found = any(kw in code_snippet for kw in pattern["anti_keywords"])
-                    
-                    if keywords_found and not anti_keywords_found:
-                        # Only override if LLM was unsure or missed it, OR if it's a critical pattern
-                        # But if LLM explicitly said "Safe" with reasoning, we should be careful.
-                        # For now, we'll treat these as "Strong Indicators" but allow LLM to provide details.
-                        detected_vuln = {
-                            "type": vuln_type,
-                            "cwe": pattern["cwe"],
-                            "severity": pattern["severity"],
-                            "owasp": pattern["owasp"]
-                        }
-                        logger.info(f"{vuln_type} keywords detected - potential vulnerability")
-                        break
-                
-                # Logic: 
-                # 1. If LLM says Vulnerable, trust LLM (it has reasoning).
-                # 2. If LLM says Safe/Unknown BUT we found Strong Keywords, override to Vulnerable (Safety Net).
-                # 3. If LLM says Safe and No Keywords, return Safe.
-                
-                llm_is_vuln = data.get("vulnerable", False) or "vulnerable" in str(data).lower()
-                
-                if detected_vuln and not llm_is_vuln:
-                    logger.info(f"LLM missed {detected_vuln['type']} but keywords found. Overriding.")
+                if is_vulnerable and data.get("type", "").lower() != "safe":
+                    # LLM detected vulnerability but we don't trust its CVE/CWE
+                    # Mark as "unverified" so user knows this is LLM-guessed
                     return [{
-                        "cwe": detected_vuln["cwe"],
-                        "cve": data.get("cve", "N/A"),
-                        "owasp": detected_vuln["owasp"],
-                        "severity": detected_vuln["severity"],
-                        "type": detected_vuln["type"],
-                        "details": f"{detected_vuln['type']} detected via keyword analysis (LLM missed it). Verify manually."
+                        "cwe": "Unverified",  # Don't trust LLM CVE/CWE guessing
+                        "cve": "N/A",
+                        "owasp": "Unknown",
+                        "severity": data.get("severity", "Medium"),
+                        "type": data.get("type", "Potential Vulnerability"),
+                        "details": data.get("details", response),
+                        "confidence": "low",  # Low confidence for LLM-only classification
+                        "source": "llm_fallback"
                     }]
-                
-                # If LLM detected it, ensure classification matches keywords if present
-                if llm_is_vuln and detected_vuln:
-                     if data.get("cwe") == "Unknown" or data.get("cwe") == "CWE-74":
-                         data["cwe"] = detected_vuln["cwe"]
-                         data["type"] = detected_vuln["type"]
-                
-                # Otherwise, return LLM classification
-                return [{
-                    "cwe": data.get("cwe", "Unknown"),
-                    "cve": data.get("cve", "N/A"),
-                    "owasp": data.get("owasp", "Unknown"),
-                    "severity": data.get("severity", "Unknown"),
-                    "type": data.get("type", "Unknown"),
-                    "details": data.get("details", response)
-                }]
-        except:
-            pass
+                else:
+                    # LLM says safe
+                    return [{
+                        "cwe": "Safe",
+                        "cve": "N/A",
+                        "owasp": "None",
+                        "severity": "None",
+                        "type": "Safe",
+                        "confidence": "medium",
+                        "source": "llm"
+                    }]
+        except Exception as e:
+            logger.warning(f"Failed to parse LLM response: {e}")
 
-        # Fallback for non-JSON output (legacy behavior or hallucination)
-        if "Safe" in response and len(response) < 50:
+        # Fallback for non-JSON output
+        if "Safe" in response and len(response) < 100:
              return [{
                 "cwe": "Safe",
                 "cve": "N/A",
                 "owasp": "None",
                 "severity": "None",
-                "type": "False Positive"
+                "type": "Safe"
             }]
-            
-        # IMPROVED FALLBACK: Try to extract CWE/Type from text using Regex
-        cwe_match = re.search(r'(CWE-\d+)', response, re.IGNORECASE)
-        cwe_val = cwe_match.group(1).upper() if cwe_match else "Unknown"
         
-        # Determine if it's a vulnerability based on keywords
-        is_vuln = "safe" not in response.lower() and ("vulnerability" in response.lower() or "cwe" in response.lower())
-        
+        # Can't determine - mark as potential issue
         return [{
-            "cwe": cwe_val,
+            "cwe": "Unverified",
             "cve": "N/A",
             "owasp": "Unknown",
             "severity": "Unknown",
-            "type": "Potential Vulnerability" if is_vuln else "Unknown",
-            "details": response  # Keep full response for context
+            "type": "Potential Vulnerability (LLM Unparseable)",
+            "details": response[:500],
+            "confidence": "low",
+            "source": "llm_fallback"
         }]
 
     def scan_code(self, code_snippet, file_extension=None, file_path="", paranoid_mode=False):

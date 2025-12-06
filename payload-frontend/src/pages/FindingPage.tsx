@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bandage, Download, Share, Trash } from "lucide-react";
+import { Download } from "lucide-react";
 import { http } from "../utils/http";
 import { GET_FINDINGS } from "../endpoints/resultspage.endpoints";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { useParams } from "react-router-dom";
 interface Finding {
   severity: "Critical" | "High" | "Medium" | "Low" | "Unknown";
   cwe: string;
+  cve: string;
   file: string;
   line: number;
   confidence: number;
@@ -131,18 +132,19 @@ const FindingPage = () => {
   const handleDownload = async (path: string) => {
     try {
       // Extract filename from the path
-      const filename = path.split('\\').pop() || path.split('/').pop() || 'exploit.py';
+      const filename =
+        path.split("\\").pop() || path.split("/").pop() || "exploit.py";
 
       // Make request to download the file from the server
       const response = await http.get(`/download`, {
         params: { file_path: path },
-        responseType: 'blob', // Important for file downloads
+        responseType: "blob", // Important for file downloads
       });
 
       // Create a blob URL and trigger download
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
       link.download = filename;
       document.body.appendChild(link);
@@ -154,8 +156,8 @@ const FindingPage = () => {
 
       toast.success(`Downloaded ${filename} successfully`);
     } catch (error) {
-      toast.error('Error downloading exploit file');
-      console.error('Download error:', error);
+      toast.error("Error downloading exploit file");
+      console.error("Download error:", error);
     }
   };
 
@@ -251,7 +253,7 @@ const FindingPage = () => {
           <div className="glassmorphism-card rounded-lg p-4 border border-red-500/20 mb-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Findings</h2>
-              <div className="flex gap-2">
+              {/* <div className="flex gap-2">
                 <button className="border border-gray-600 hover:border-red-500 rounded-lg px-4 py-2 text-sm transition-colors flex items-center gap-2">
                   <span className="text-gray-500">
                     <Trash className="w-5" />
@@ -270,12 +272,12 @@ const FindingPage = () => {
                   </span>
                   Generate Patches
                 </button>
-              </div>
+              </div> */}
             </div>
           </div>
 
           {/* Findings Table */}
-          <div className="glassmorphism-card rounded-lg border border-red-500/20 overflow-hidden">
+          <div className="glassmorphism-card rounded-lg border border-red-500/20 max-h-[70vh] overflow-auto">
             {findingLoading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
@@ -306,6 +308,9 @@ const FindingPage = () => {
                       </th>
                       <th className="text-left p-4 text-sm font-semibold text-gray-400">
                         CWE
+                      </th>
+                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                        CVE
                       </th>
                       <th className="text-left p-4 text-sm font-semibold text-gray-400">
                         File
@@ -340,6 +345,9 @@ const FindingPage = () => {
                           {finding.cwe}
                         </td>
                         <td className="p-4 text-sm text-gray-300">
+                          {finding.cve}
+                        </td>
+                        <td className="p-4 text-sm text-gray-300">
                           {finding.file}
                         </td>
                         <td className="p-4 text-sm text-gray-400">
@@ -351,13 +359,12 @@ const FindingPage = () => {
                         <td className="p-4">
                           {finding.exploit_path ? (
                             <button
-                              onClick={() => handleDownload(finding.exploit_path!)}
+                              onClick={() =>
+                                handleDownload(finding.exploit_path!)
+                              }
                               className="bg-gray-800 hover:bg-gray-700 rounded-full p-2 transition-colors"
                             >
-                              <Download
-                                size={16}
-                                className="text-gray-400"
-                              />
+                              <Download size={16} className="text-gray-400" />
                             </button>
                           ) : (
                             <span className="text-gray-600 text-xs">N/A</span>
