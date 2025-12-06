@@ -84,32 +84,37 @@ class AnalyticsService {
   }
 
   /**
-   * Get severity heatmap data by date and day of week
+   * Get severity heatmap data by date and day of week based on scans
    * @returns {Promise<Object>} Heatmap data
    */
   async getSeverityHeatmap() {
     const db = getDb();
-    const findingsCollection = db.collection(DB_CONFIG.COLLECTIONS.FINDINGS);
+    const scansCollection = db.collection(DB_CONFIG.COLLECTIONS.SCANS);
 
     // Get last 4 weeks of data
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
 
-    const results = await findingsCollection
+    const results = await scansCollection
       .aggregate([
         {
           $match: {
-            timestamp: { $gte: fourWeeksAgo },
+            "timestamps.submitted_at": { $gte: fourWeeksAgo },
           },
         },
         {
           $project: {
             date: {
-              $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$timestamps.submitted_at"
+              },
             },
-            dayOfWeek: { $dayOfWeek: "$timestamp" },
-            week: { $week: "$timestamp" },
-            confidence: "$details.confidence",
+            dayOfWeek: { $dayOfWeek: "$timestamps.submitted_at" },
+            week: { $week: "$timestamps.submitted_at" },
+            project_name: 1,
+            vulnerabilities: { $ifNull: ["$stats.total_vulns", 0] },
+            exploits: { $ifNull: ["$stats.total_exploits", 0] },
           },
         },
         {
@@ -119,8 +124,16 @@ class AnalyticsService {
               dayOfWeek: "$dayOfWeek",
               week: "$week",
             },
-            count: { $sum: 1 },
-            avgSeverity: { $avg: "$confidence" },
+            scanCount: { $sum: 1 },
+            totalExploits: { $sum: "$exploits" },
+            avgVulnerabilities: { $avg: "$vulnerabilities" },
+            // Collect scan details (project name and exploit count)
+            scans: {
+              $push: {
+                name: "$project_name",
+                exploits: "$exploits"
+              }
+            }
           },
         },
         {
@@ -132,9 +145,15 @@ class AnalyticsService {
             date: "$_id.date",
             dayOfWeek: "$_id.dayOfWeek",
             week: "$_id.week",
-            count: 1,
+            scanCount: 1,
+            exploitCount: "$totalExploits",
+            scans: 1,
+            // Intensity based on average vulnerabilities (normalized 0-1)
             intensity: {
-              $multiply: ["$avgSeverity", { $divide: ["$count", 100] }],
+              $min: [
+                1,
+                { $divide: ["$avgVulnerabilities", 100] }
+              ]
             },
           },
         },
@@ -161,8 +180,19 @@ class AnalyticsService {
           $unwind: "$exploits",
         },
         {
+          $project: {
+            // Extract only CWE code (e.g., "CWE-502" from "CWE-502: Deserialization of Untrusted Data")
+            cweCode: {
+              $arrayElemAt: [
+                { $split: ["$exploits.cwe", ":"] },
+                0
+              ]
+            }
+          },
+        },
+        {
           $group: {
-            _id: "$exploits.cwe",
+            _id: "$cweCode",
             count: { $sum: 1 },
           },
         },

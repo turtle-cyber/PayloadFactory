@@ -39,10 +39,17 @@ interface BarChartProps extends BaseChartProps {
 }
 
 // Heatmap Chart Props
+export interface HeatmapChartDataPoint {
+  value: [number, number, number]; // [x, y, intensity]
+  scanCount?: number;
+  scans?: Array<{ name: string; exploits: number }>;
+  date?: string;
+}
+
 export interface HeatmapChartData {
   xAxisData: string[];
   yAxisData: string[];
-  data: [number, number, number][]; // [x, y, value]
+  data: HeatmapChartDataPoint[] | [number, number, number][]; // Support both formats
 }
 
 interface HeatmapChartProps extends BaseChartProps {
@@ -265,6 +272,22 @@ const EChart: React.FC<EChartProps> = (props) => {
       case "heatmap": {
         const heatmapProps = props as HeatmapChartProps;
 
+        // Transform data to ECharts format and preserve metadata
+        const chartData = heatmapProps.data.data.map((item) => {
+          if (Array.isArray(item)) {
+            // Simple array format [x, y, value]
+            return item;
+          } else {
+            // Extended format with metadata
+            return {
+              value: item.value,
+              scanCount: item.scanCount,
+              scans: item.scans,
+              date: item.date,
+            };
+          }
+        });
+
         option = {
           title: heatmapProps.title
             ? {
@@ -278,6 +301,38 @@ const EChart: React.FC<EChartProps> = (props) => {
             backgroundColor: "rgba(0, 0, 0, 0.8)",
             borderColor: "#ef4444",
             textStyle: { color: "#ffffff" },
+            formatter: (params: any) => {
+              const data = params.data;
+              if (!data) return "";
+
+              const day = heatmapProps.data.xAxisData[params.value[0]];
+              const week = heatmapProps.data.yAxisData[params.value[1]];
+              const intensity = params.value[2];
+
+              let tooltip = `<strong>${day} - ${week}</strong><br/>`;
+              tooltip += `Intensity: ${intensity}<br/>`;
+
+              // Add scan count if available
+              if (data.scanCount !== undefined) {
+                tooltip += `Scans: ${data.scanCount}<br/>`;
+              }
+
+              // Add individual scan details if available
+              if (
+                data.scans &&
+                Array.isArray(data.scans) &&
+                data.scans.length > 0
+              ) {
+                tooltip += `<br/>`;
+                data.scans.forEach(
+                  (scan: { name: string; exploits: number }) => {
+                    tooltip += `${scan.name}: ${scan.exploits}<br/>`;
+                  }
+                );
+              }
+
+              return tooltip;
+            },
           },
           grid: {
             left: "10%",
@@ -320,7 +375,7 @@ const EChart: React.FC<EChartProps> = (props) => {
           series: [
             {
               type: "heatmap",
-              data: heatmapProps.data.data,
+              data: chartData,
               label: {
                 show: false,
               },
