@@ -7,7 +7,21 @@ import {
 } from "@/components/ui/select";
 import { FolderSymlink, FolderUp } from "lucide-react";
 
-const ExportSettingsCard = () => {
+interface ExportSettingsCardProps {
+  exportProjectPath: string;
+  exportFormat: string;
+  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFormatChange: (value: string) => void;
+  onBrowse?: () => void;
+}
+
+const ExportSettingsCard: React.FC<ExportSettingsCardProps> = ({
+  exportProjectPath,
+  exportFormat,
+  onInputChange,
+  onFormatChange,
+  onBrowse,
+}) => {
   return (
     <div>
       {/*Heading*/}
@@ -23,15 +37,25 @@ const ExportSettingsCard = () => {
         <div className="items-center justify-between flex rounded-t-lg bg-[#2f2f2f] py-3 px-4">
           <span className="font-md text-gray-500">Project Path</span>
 
-          <div className="flex gap-1 rounded-md px-2 border border-transparent  hover:border-white cursor-pointer">
+          <button
+            onClick={onBrowse}
+            className="flex gap-1 rounded-md px-2 border border-transparent hover:border-white cursor-pointer transition-all"
+          >
             <FolderUp className="w-4" />
             <span>Browse</span>
-          </div>
+          </button>
         </div>
 
         <div className="border-[#2f2f2f] border items-center bg-[#0d0d0d] p-4 rounded-b-lg">
           <div className="border border-[#2f2f2f] rounded-lg p-4">
-            <span className="text-sm text-blue-300">Enter Source Code ZIP</span>
+            <input
+              type="text"
+              name="exportProjectPath"
+              value={exportProjectPath}
+              onChange={onInputChange}
+              placeholder="Enter Output File Path"
+              className="w-full bg-transparent text-sm text-blue-300 placeholder-blue-300/50 focus:outline-none"
+            />
           </div>
         </div>
       </div>
@@ -40,8 +64,8 @@ const ExportSettingsCard = () => {
       <div className="flex items-center ml-24 gap-x-4">
         <span className="text-blue-300">Export Format:</span>
 
-        <Select value={""} onValueChange={() => {}}>
-          <SelectTrigger className="w-full w-sm bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500/50 transition-colors">
+        <Select value={exportFormat} onValueChange={onFormatChange}>
+          <SelectTrigger className="w-full max-w-sm bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500/50 transition-colors">
             <SelectValue placeholder="Select export format" />
           </SelectTrigger>
           <SelectContent className="bg-gray-900 border border-gray-700/50">

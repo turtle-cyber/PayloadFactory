@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bandage, Download, Share, Trash } from "lucide-react";
+import { Download } from "lucide-react";
 import { http } from "../utils/http";
 import { GET_FINDINGS } from "../endpoints/resultspage.endpoints";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { useParams } from "react-router-dom";
 interface Finding {
   severity: "Critical" | "High" | "Medium" | "Low" | "Unknown";
   cwe: string;
+  cve: string;
   file: string;
   line: number;
   confidence: number;
@@ -309,6 +310,9 @@ const FindingPage = () => {
                         CWE
                       </th>
                       <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                        CVE
+                      </th>
+                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
                         File
                       </th>
                       <th className="text-left p-4 text-sm font-semibold text-gray-400">
@@ -339,6 +343,9 @@ const FindingPage = () => {
                         </td>
                         <td className="p-4 text-sm text-gray-300">
                           {finding.cwe}
+                        </td>
+                        <td className="p-4 text-sm text-gray-300">
+                          {finding.cve}
                         </td>
                         <td className="p-4 text-sm text-gray-300">
                           {finding.file}
