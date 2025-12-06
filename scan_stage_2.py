@@ -5,13 +5,14 @@ import logging
 import json
 import torch
 import gc
+import subprocess
+import datetime
 from datetime import datetime
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
 from ml_engine.vuln_scanner import VulnScanner
 from ml_engine.exploit_generator import ExploitGenerator
-from ml_engine.exploit_executor import ExploitExecutor # For Instant Attack
 from ml_engine.db_manager import DatabaseManager
 from ml_engine.logger_config import setup_logger
 
@@ -130,13 +131,6 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
             default_target=target_url
         )
         
-        # Initialize ExploitExecutor for Instant Attack (Rapid Fire)
-        exploit_executor = None
-        if auto_execute and remote_host:
-            logger.info("INSTANT ATTACK ENABLED: Exploits will be executed immediately upon generation!")
-            exploit_executor = ExploitExecutor(timeout=30) # 30s timeout per exploit
-        
-        
         # Import enhanced modules
         from ml_engine.exploit_context import extract_vulnerability_context
         from ml_engine.exploit_validator import ExploitValidator
@@ -169,13 +163,13 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                 if vuln.get('classification') is None:
                     logger.info(f"Classifying vulnerability in {file_name}...")
                     chunk_to_analyze = vuln.get('vulnerable_chunk', code_content)
-                    
+
                     # Check if this is a critical target
                     is_critical = os.path.basename(file_path) in TARGET_FILES
                     if is_critical:
                         logger.info(f"  -> Using PARANOID mode for classification")
-                        
-                    classification_list = vuln_scanner.classify_vulnerability(chunk_to_analyze, paranoid_mode=is_critical)
+
+                    classification_list = vuln_scanner.classify_vulnerability(chunk_to_analyze, paranoid_mode=is_critical, file_path=file_path)
                     # Handle list return (take first result or empty dict)
                     classification = classification_list[0] if isinstance(classification_list, list) and classification_list else (classification_list if isinstance(classification_list, dict) else {})
                     
@@ -317,33 +311,50 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                             pf.write(payload_bytes)
                         logger.info(f"Payload saved: {payload_filename}")
                         
-                        # --- INSTANT ATTACK (RAPID FIRE) ---
-                        if exploit_executor and remote_host:
-                            logger.info(f"⚡ FAST-TRACK: Executing {exploit_filename} against target...")
-                            try:
-                                result = exploit_executor.execute_exploit(
-                                    exploit_path, 
-                                    target_ip=remote_host, 
-                                    target_port=remote_port
-                                )
-                                
-                                if result.rce_detected:
-                                    logger.critical(f"🌟 RCE CONFIRMED (Instant): {exploit_filename} 🌟")
-                                    logger.critical(f"Output: {result.output[:300]}")
-                                    # Update DB with success
-                                    # (Ideally update the exploit record we just created)
-                                elif result.success:
-                                     logger.info(f"Execution successful (No RCE): {exploit_filename}")
-                                else:
-                                     logger.warning(f"Execution failed: {result.error}")
-                            except Exception as exec_err:
-                                logger.error(f"Instant execution error: {exec_err}")
-                        # -----------------------------------
+                        # DEFERRED: Auto-execution is now handled in Stage 3
+                        if auto_execute:
+                            logger.info(f"Exploit generated. Queued for Stage 3 execution: {exploit_filename}")
                         
                     else:
-                        logger.error(f"Enhanced generation failed, using fallback...")
-                        # Fallback logic could be added here if needed
+                        logger.error(f"Enhanced generation failed, attempting standard fallback...")
                         
+                        # FALLBACK MECHANISM
+                        fallback_exploit = exploit_gen.generate_exploit(vuln)
+                        
+                        if fallback_exploit and fallback_exploit.strip():
+                             exploit_code = fallback_exploit
+                             # Basic validation for fallback
+                             if "import" not in exploit_code:
+                                 exploit_code = "import requests\n" + exploit_code
+                             
+                             # Save fallback exploit
+                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                             exploit_filename = f"exploit_{file_name}_{i}_{timestamp}_fallback.py"
+                             exploit_path = os.path.join(output_dir, exploit_filename)
+                             
+                             with open(exploit_path, 'w', encoding='utf-8') as ef:
+                                 ef.write("# Fallback Exploit\n")
+                                 ef.write(exploit_code)
+                             
+                             logger.info(f"Fallback exploit saved: {exploit_filename}")
+                             
+                             # DB SAVE (Fallback)
+                             exploit_data = {
+                                 'filename': exploit_filename,
+                                 'target_file': file_name,
+                                 'finding_id': vuln.get('finding_id'),
+                                 'cwe': cwe,
+                                 'code': exploit_code,
+                                 'metadata': {'method': 'fallback'},
+                                 'validation': {'valid': True, 'note': 'fallback'},
+                                 'path': exploit_path
+                             }
+                             db_manager.save_exploit(exploit_data, scan_id=scan_id, file_id=file_id)
+                             
+                             # DEFERRED: Auto-execution is now handled in Stage 3
+                             if auto_execute:
+                                 logger.info(f"Fallback exploit generated. Queued for Stage 3 execution: {exploit_filename}")
+                
                 except Exception as ge:
                     logger.error(f"Failed to generate exploit for {file_name}: {ge}")
 
@@ -492,7 +503,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--auto-execute",
         action="store_true",
-        help="Automatically execute exploits immediately after generation (Instant Attack)"
+        help="Automatically execute generated exploits"
     )
     
     args = parser.parse_args()
@@ -507,5 +518,5 @@ if __name__ == "__main__":
         skip_other_files=args.skip_other_files,
         demo_mode=args.demo_mode,
         model_id=args.model,
-        auto_execute=args.auto_execute # Pass auto-execute flag
+        auto_execute=args.auto_execute
     )

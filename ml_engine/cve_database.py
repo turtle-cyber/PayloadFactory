@@ -4,6 +4,7 @@ Supports version-based vulnerability detection for penetration testing demos
 
 Now includes Pattern-Based Classification for accurate CVE/CWE assignment
 """
+import os
 import re
 import logging
 from packaging import version
@@ -30,6 +31,7 @@ class VulnPattern:
     regex_patterns: List[str] = field(default_factory=list)
     cve_examples: List[str] = field(default_factory=list)
     exploit_hints: str = ""
+    valid_extensions: List[str] = field(default_factory=list) # New: Only match these extensions
 
 
 # Comprehensive vulnerability patterns database
@@ -47,7 +49,8 @@ VULN_PATTERNS: Dict[str, VulnPattern] = {
                   "javax.el", "jakarta.el", "evaluateExpression"],
         anti_keywords=["escapeEL", "sanitizeEL"],
         cve_examples=["CVE-2011-2730", "CVE-2017-5638"],
-        exploit_hints="Inject ${T(java.lang.Runtime).getRuntime().exec('id')}"
+        exploit_hints="Inject ${T(java.lang.Runtime).getRuntime().exec('id')}",
+        valid_extensions=[".java", ".jsp"]
     ),
     
     "SQL Injection": VulnPattern(
@@ -200,7 +203,8 @@ VULN_PATTERNS: Dict[str, VulnPattern] = {
         keywords=["strcpy", "strcat", "sprintf", "vsprintf", "gets", "scanf", "memcpy"],
         anti_keywords=["strncpy", "strncat", "snprintf", "fgets", "memcpy_s", "strcpy_s"],
         cve_examples=["CVE-2021-3156"],
-        exploit_hints="Overflow buffer to overwrite return address"
+        exploit_hints="Overflow buffer to overwrite return address",
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
     ),
     
     "Format String": VulnPattern(
@@ -210,7 +214,8 @@ VULN_PATTERNS: Dict[str, VulnPattern] = {
         severity="Critical",
         keywords=["printf(user", "sprintf(buf, user"],
         regex_patterns=[r'printf\s*\(\s*[a-zA-Z_]+\s*\)'],
-        exploit_hints="Inject %x%x%x%n to read/write memory"
+        exploit_hints="Inject %x%x%x%n to read/write memory",
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
     ),
     
     "Use After Free": VulnPattern(
@@ -219,7 +224,8 @@ VULN_PATTERNS: Dict[str, VulnPattern] = {
         owasp="N/A",
         severity="Critical",
         keywords=["free(", "delete ", "delete[]"],
-        cve_examples=["CVE-2021-21224"]
+        cve_examples=["CVE-2021-21224"],
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
     ),
     
     "Integer Overflow": VulnPattern(
@@ -228,7 +234,8 @@ VULN_PATTERNS: Dict[str, VulnPattern] = {
         owasp="N/A",
         severity="High",
         keywords=["malloc(size *", "calloc(", "realloc("],
-        regex_patterns=[r'malloc\s*\([^)]*\*[^)]*\)']
+        regex_patterns=[r'malloc\s*\([^)]*\*[^)]*\)'],
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
     ),
     
     # === CRYPTO (A02:2021) ===
@@ -255,18 +262,30 @@ class VulnPatternClassifier:
     
     def classify(self, code_snippet: str, file_path: str = "") -> Optional[Dict[str, Any]]:
         """
-        Classify vulnerability based on code patterns.
+        Classify vulnerability based on code patterns and extension.
         
         Returns:
             Dict with cwe, owasp, severity, type if match found
             None if no known vulnerability pattern matches
         """
         code_lower = code_snippet.lower()
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower()
         
         for vuln_type, pattern in self.patterns.items():
-            # Check keywords (case-insensitive for most, case-sensitive for functions)
-            keywords_found = any(kw in code_snippet or kw.lower() in code_lower 
-                                for kw in pattern.keywords)
+            # Check file extension validity first (if defined)
+            if pattern.valid_extensions:
+                if ext not in pattern.valid_extensions:
+                    continue
+            
+            # Check keywords (case-insensitive)
+            keywords_found = False
+            for kw in pattern.keywords:
+                 # Improve matching: try to match whole words for short keywords if possible
+                 # But for now, just checking presence is faster, relying on extension filter for safety.
+                 if kw in code_snippet or kw.lower() in code_lower:
+                     keywords_found = True
+                     break
             
             if not keywords_found:
                 continue
@@ -379,7 +398,8 @@ class CVEDatabase:
                         "9": "9.0.98"
                     },
                     "exploit_available": True,
-                    "exploit_notes": "RCE via race condition when default servlet write enabled on case-insensitive filesystem"
+                    "exploit_notes": "RCE via race condition when default servlet write enabled on case-insensitive filesystem",
+                    "relevant_files": r'\.jsp$|JspServlet|DefaultServlet|web\.xml'
                 },
                 {
                     "cve_id": "CVE-2024-56337",
@@ -731,6 +751,23 @@ class CVEDatabase:
         # Create new findings for each CVE
         cve_findings = []
         for cve in cves:
+            # CHECK RELEVANCE: Skip if file doesn't match relevant_files pattern
+            # Deep Thinking:
+            # If 'relevant_files' is NOT defined, we used to add it to EVERYTHING.
+            # This causes massive duplication (e.g. 300 files * 8 CVEs = 2400 findings).
+            # NEW LOGIC: If 'relevant_files' is missing, we check if we have a specific file match.
+            # If not, we SHOULD NOT add it to this specific file finding.
+            # The 'Global' handler in scan_stage_1.py will ensure these CVEs are reported ONCE for the project.
+            
+            if "relevant_files" in cve:
+                if not re.search(cve["relevant_files"], file_path, re.IGNORECASE) and not re.search(cve["relevant_files"], code_content, re.IGNORECASE):
+                    continue
+            else:
+                # If no relevant_files pattern is defined, this is likely a general CVE.
+                # We should NOT attach it to random files (like Utilities.java).
+                # Skipping here ensures it's only reported by the Global handler.
+                continue
+            
             cve_finding = {
                 "type": f"Version-Specific Vulnerability: {cve['description']}",
                 "cwe": cve["cwe"],

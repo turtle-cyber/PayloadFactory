@@ -38,16 +38,21 @@ class FilePrioritizer:
     def __init__(self, config: Dict = None):
         """
         Initialize prioritizer with optional configuration.
-        
+
         Args:
             config: Optional configuration dict. If None, uses sensible defaults.
-        
+                   If provided, merges with defaults (user config takes precedence).
+
         Deep Thinking:
         - Defaults should work for Java/C/C++ enterprise apps (most common)
         - Config allows override for different project structures
         - Validation ensures bad config doesn't crash the system
+        - Merging allows partial config override (e.g., just max_files)
         """
-        self.config = config or self._get_default_config()
+        # Start with defaults, then merge user config
+        self.config = self._get_default_config()
+        if config:
+            self.config.update(config)
         self._validate_config()
         
     def _get_default_config(self) -> Dict:

@@ -12,7 +12,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
-    def __init__(self, uri=None, db_name="payloadfactory"):
+    def __init__(self, uri=None, db_name="payloadfactoryDB"):
         # Use env var if provided, else default
         self.uri = uri or os.getenv("MONGO_URI", "mongodb://admin:admin@localhost:27017/?authSource=admin")
         self.db_name = db_name
@@ -322,3 +322,24 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to fetch agent metrics: {e}")
             return []
+
+    def clear_database(self):
+        """Cleans all data from the database (scans, files, findings, logs)."""
+        if not self.connected: return False
+        
+        try:
+            # Drop collections but keep indexes/structure if needed
+            # Or simpler: dropDatabase() but we might want to keep some config?
+            # Safe approach: Delete all documents from known collections
+            
+            collections = ['scans', 'files', 'findings', 'exploits', 'agent_logs']
+            
+            for col_name in collections:
+                self.db[col_name].delete_many({})
+                logger.info(f"Cleared collection: {col_name}")
+            
+            logger.info("Database cleared successfully.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear database: {e}")
+            return False
