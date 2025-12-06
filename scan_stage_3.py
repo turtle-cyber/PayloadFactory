@@ -12,13 +12,17 @@ from ml_engine.rl_agent import RLAgent
 from ml_engine.spider_module import WebSpider
 from ml_engine.logger_config import setup_logger
 from ml_engine.feedback_context import FeedbackContext
+from ml_engine.exploit_executor import ExploitExecutor, ExploitResult
 
 # Configure logging
 logger = setup_logger(__name__, "scan_log.json")
 
-def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False):
+def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False):
     """
     Stage 3: Fuzzing and RL Optimization of generated exploits.
+    
+    Args:
+        auto_execute: If True, automatically execute exploits against the target after optimization
     """
     logger.info("="*50)
     logger.info("STAGE 3: FUZZING & RL OPTIMIZATION (Process 3)")
@@ -28,6 +32,8 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
         logger.info(f"MODE: PARALLEL FUZZING ({threads} threads)")
     if tomcat_direct:
         logger.info("MODE: TOMCAT DIRECT ATTACK (CVE-based targeting)")
+    if auto_execute:
+        logger.info("MODE: AUTO-EXECUTE ENABLED (Exploits will be run against target)")
     
     if remote_host:
         logger.info(f"ATTACK MODE ENABLED: Targeting {remote_host}:{remote_port}")
@@ -53,6 +59,12 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
     else:
         fuzzer = Fuzzer(target_ip=remote_host, target_port=remote_port)
     rl_agent = RLAgent()
+    
+    # Initialize ExploitExecutor if auto-execute is enabled
+    exploit_executor = None
+    if auto_execute and remote_host:
+        exploit_executor = ExploitExecutor(timeout=30, use_listener=False)
+        logger.info("ExploitExecutor initialized for auto-execution")
     
     # --- TOMCAT DIRECT ATTACK MODE ---
     tomcat_paths = []
@@ -325,6 +337,33 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
 
                 logger.info(f"  -> Optimization complete for {file_name}")
                 
+                # --- EXPLOIT EXECUTION PHASE ---
+                if exploit_executor and remote_host:
+                    logger.info("="*50)
+                    logger.info("EXPLOIT EXECUTION PHASE")
+                    logger.info("="*50)
+                    logger.info(f"  -> Executing exploit: {file_name}")
+                    
+                    exec_result = exploit_executor.execute_exploit(
+                        exploit_file, 
+                        target_ip=remote_host, 
+                        target_port=remote_port
+                    )
+                    
+                    if exec_result.rce_detected:
+                        logger.critical(f"  -> *** RCE SUCCESSFUL! *** Exploit: {file_name}")
+                        logger.critical(f"  -> Output: {exec_result.output[:500] if exec_result.output else 'N/A'}")
+                        # Append RCE confirmation to exploit file
+                        with open(exploit_file, 'a', encoding='utf-8') as f:
+                            f.write(f"\n# *** RCE CONFIRMED on {remote_host}:{remote_port} ***\n")
+                    elif exec_result.dos_detected:
+                        logger.warning(f"  -> DoS detected: {file_name}")
+                    elif exec_result.success:
+                        logger.info(f"  -> Exploit executed successfully: {file_name}")
+                        logger.info(f"  -> Output: {exec_result.output[:200] if exec_result.output else 'N/A'}")
+                    else:
+                        logger.warning(f"  -> Exploit execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}")
+                
                 if not infinite:
                     break
                 else:
@@ -350,6 +389,8 @@ if __name__ == "__main__":
     parser.add_argument("--threads", type=int, default=1, help="Number of concurrent fuzzing threads")
     parser.add_argument("--use-boofuzz", action="store_true", help="Use Boofuzz advanced fuzzer (CVE payloads for Tomcat v8-v11)")
     parser.add_argument("--tomcat-direct", action="store_true", help="Use Tomcat-specific attack targeting (port scan, brute-force, CVE chains)")
+    parser.add_argument("--auto-execute", action="store_true", help="Automatically execute exploits against target after optimization")
     args = parser.parse_args()
     
-    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct)
+    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct, auto_execute=args.auto_execute)
+
