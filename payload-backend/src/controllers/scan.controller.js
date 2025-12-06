@@ -83,6 +83,10 @@ class ScanController {
         minConfidence,
         quickScan,
         demoMode,
+        attackMode,
+        targetIp,
+        targetPort,
+        autoExec,
       } = req.body;
 
       logger.info("Processing ZIP upload", {
@@ -123,11 +127,16 @@ class ScanController {
       fs.unlinkSync(req.file.path);
 
       // Prepare scan configuration for Python backend
+      const isAttackMode = attackMode === "true" || attackMode === true;
       const scanConfig = {
         target_dir: extractedPath,
         project_name: applicationName || req.file.originalname.replace(".zip", ""),
         quick_scan: quickScan === "true" || quickScan === true,
         demo_mode: demoMode === "true" || demoMode === true,
+        attack_mode: isAttackMode,
+        remote_host: isAttackMode ? targetIp : undefined,
+        remote_port: isAttackMode ? parseInt(targetPort, 10) : undefined,
+        auto_execute: isAttackMode && (autoExec === "true" || autoExec === true),
       };
 
       logger.info("Starting scan via Python backend", { config: scanConfig });

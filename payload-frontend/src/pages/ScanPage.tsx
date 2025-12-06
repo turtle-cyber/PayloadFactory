@@ -16,6 +16,7 @@ interface FormData {
   attackMode: boolean;
   targetIp: string;
   targetPort: string;
+  autoExec: boolean;
 }
 
 interface ScanProgress {
@@ -93,6 +94,7 @@ const ScanPage: React.FC = () => {
     attackMode: false,
     targetIp: "",
     targetPort: "",
+    autoExec: false,
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -278,6 +280,7 @@ const ScanPage: React.FC = () => {
       if (formData.attackMode) {
         uploadData.append("targetIp", formData.targetIp);
         uploadData.append("targetPort", formData.targetPort);
+        uploadData.append("autoExec", formData.autoExec.toString());
       }
 
       toast.success("Uploading...", "Processing your ZIP file");
@@ -520,6 +523,7 @@ const ScanPage: React.FC = () => {
               attackMode: formData.attackMode,
               targetIp: formData.targetIp,
               targetPort: formData.targetPort,
+              autoExec: formData.autoExec,
             }}
             isScanning={isScanning}
             isUploading={isUploading}

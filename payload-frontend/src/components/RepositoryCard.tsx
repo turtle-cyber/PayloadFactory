@@ -11,6 +11,7 @@ interface RepositoryCardProps {
     attackMode: boolean;
     targetIp: string;
     targetPort: string;
+    autoExec: boolean;
   };
   isScanning: boolean;
   isUploading: boolean;
@@ -187,8 +188,8 @@ const RepositoryCard: React.FC<RepositoryCardProps> = ({
           <span>Auto Execute:</span>
           <input
             type="checkbox"
-            name="autoexec"
-            checked={formData.demoMode}
+            name="autoExec"
+            checked={formData.autoExec}
             onChange={onInputChange}
             disabled={!formData.attackMode || isScanning || isUploading}
             className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
