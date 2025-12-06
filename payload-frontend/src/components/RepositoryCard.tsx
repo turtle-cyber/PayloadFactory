@@ -11,6 +11,7 @@ interface RepositoryCardProps {
     attackMode: boolean;
     targetIp: string;
     targetPort: string;
+    autoExec: boolean;
   };
   isScanning: boolean;
   isUploading: boolean;
@@ -94,7 +95,11 @@ const RepositoryCard: React.FC<RepositoryCardProps> = ({
             <div className="border border-[#2f2f2f] rounded-lg p-4">
               <span className="text-sm text-blue-300">
                 {selectedFile
-                  ? `${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`
+                  ? `${selectedFile.name} (${(
+                      selectedFile.size /
+                      1024 /
+                      1024
+                    ).toFixed(2)} MB)`
                   : "Enter Source Code ZIP"}
               </span>
             </div>
@@ -178,6 +183,16 @@ const RepositoryCard: React.FC<RepositoryCardProps> = ({
             placeholder="80"
             disabled={!formData.attackMode || isScanning || isUploading}
             className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm w-[10vw] disabled:opacity-30 disabled:cursor-not-allowed"
+          />
+
+          <span>Auto Execute:</span>
+          <input
+            type="checkbox"
+            name="autoExec"
+            checked={formData.autoExec}
+            onChange={onInputChange}
+            disabled={!formData.attackMode || isScanning || isUploading}
+            className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
           />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "../utils/toast";
 import { http } from "../utils/http";
 import RepositoryCard from "@/components/RepositoryCard";
@@ -16,6 +16,7 @@ interface FormData {
   attackMode: boolean;
   targetIp: string;
   targetPort: string;
+  autoExec: boolean;
 }
 
 interface ScanProgress {
@@ -93,13 +94,63 @@ const ScanPage: React.FC = () => {
     attackMode: false,
     targetIp: "",
     targetPort: "",
+    autoExec: false,
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
+
+  // Start polling for scan progress
+  const startPolling = useCallback((scanId: string) => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await http.get(`/scans/${scanId}/status`);
+        if (response.data.success) {
+          const scanData = response.data.data;
+          setScanProgress(scanData);
+
+          // Save to localStorage on each update
+          saveScanToStorage(scanData);
+
+          // Stop polling if scan is completed, failed, or cancelled
+          const status = scanData.status;
+          if (
+            status === "completed" ||
+            status === "failed" ||
+            status === "cancelled"
+          ) {
+            stopPolling();
+            setIsScanning(false);
+
+            if (status === "completed") {
+              toast.success(
+                "Scan completed",
+                "Your vulnerability scan has finished successfully"
+              );
+            } else if (status === "failed") {
+              toast.error("Scan failed", "The scan encountered an error");
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching scan status:", error);
+      }
+    }, 2000); // Poll every 2 seconds
+  }, [stopPolling]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -140,56 +191,7 @@ const ScanPage: React.FC = () => {
     };
 
     recoverScan();
-  }, []);
-
-  // Start polling for scan progress
-  const startPolling = (scanId: string) => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await http.get(`/scans/${scanId}/status`);
-        if (response.data.success) {
-          const scanData = response.data.data;
-          setScanProgress(scanData);
-
-          // Save to localStorage on each update
-          saveScanToStorage(scanData);
-
-          // Stop polling if scan is completed, failed, or cancelled
-          const status = scanData.status;
-          if (
-            status === "completed" ||
-            status === "failed" ||
-            status === "cancelled"
-          ) {
-            stopPolling();
-            setIsScanning(false);
-
-            if (status === "completed") {
-              toast.success(
-                "Scan completed",
-                "Your vulnerability scan has finished successfully"
-              );
-            } else if (status === "failed") {
-              toast.error("Scan failed", "The scan encountered an error");
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching scan status:", error);
-      }
-    }, 2000); // Poll every 2 seconds
-  };
-
-  const stopPolling = () => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-  };
+  }, [startPolling]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -278,6 +280,7 @@ const ScanPage: React.FC = () => {
       if (formData.attackMode) {
         uploadData.append("targetIp", formData.targetIp);
         uploadData.append("targetPort", formData.targetPort);
+        uploadData.append("autoExec", formData.autoExec.toString());
       }
 
       toast.success("Uploading...", "Processing your ZIP file");
@@ -393,7 +396,7 @@ const ScanPage: React.FC = () => {
       <div className="max-w-6xl mx-auto space-y-6 px-6">
         {/* Scan Progress Section */}
         {scanProgress && (
-          <div className="glassmorphism-card rounded-xl p-8 border border-blue-500/20">
+          <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <svg
@@ -520,6 +523,7 @@ const ScanPage: React.FC = () => {
               attackMode: formData.attackMode,
               targetIp: formData.targetIp,
               targetPort: formData.targetPort,
+              autoExec: formData.autoExec,
             }}
             isScanning={isScanning}
             isUploading={isUploading}

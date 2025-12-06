@@ -148,6 +148,189 @@ class PythonBridgeService {
       return false;
     }
   }
+
+  /**
+   * Scan network target for open ports and services
+   * @param {Object} scanConfig - Network scan configuration
+   * @param {string} scanConfig.target_ip - Target IP address
+   * @param {string} scanConfig.ports - Ports to scan (e.g., "80,443" or "1-1000")
+   * @param {string} scanConfig.application_name - Name of the target application
+   * @returns {Promise<Object>} Discovered services
+   */
+  async scanNetwork(scanConfig) {
+    try {
+      logger.info("Starting network scan via Python backend", {
+        config: scanConfig,
+      });
+
+      const response = await this.axiosInstance.post(
+        "/network/scan",
+        scanConfig,
+        {
+          timeout: 120000, // 2 minutes for network scans
+        }
+      );
+
+      logger.info("Network scan completed", {
+        services_found: response.data.services?.length || 0,
+      });
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      logger.error("Failed to scan network", {
+        error: error.message,
+        response: error.response?.data,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to scan network",
+      };
+    }
+  }
+
+  /**
+   * Analyze discovered services using LLM
+   * @param {Object} analysisConfig - Analysis configuration
+   * @param {Array} analysisConfig.services - Array of service objects
+   * @param {string} analysisConfig.model - LLM model to use (default: "hermes")
+   * @returns {Promise<Object>} Analysis results
+   */
+  async analyzeServices(analysisConfig) {
+    try {
+      logger.info("Starting service analysis via Python backend", {
+        service_count: analysisConfig.services?.length || 0,
+        model: analysisConfig.model,
+      });
+
+      const response = await this.axiosInstance.post(
+        "/network/analyze",
+        analysisConfig,
+        {
+          timeout: 180000, // 3 minutes for LLM analysis
+        }
+      );
+
+      logger.info("Service analysis completed", {
+        analysis_count: response.data.analysis?.length || 0,
+      });
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      logger.error("Failed to analyze services", {
+        error: error.message,
+        response: error.response?.data,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to analyze services",
+      };
+    }
+  }
+
+  /**
+   * Run blackbox exploitation analysis
+   * @param {Object} blackboxConfig - Blackbox analysis configuration
+   * @param {string} blackboxConfig.target_ip - Target IP address
+   * @param {string} blackboxConfig.ports - Ports to analyze
+   * @param {Array} blackboxConfig.services - Pre-discovered services (optional)
+   * @returns {Promise<Object>} Blackbox analysis results
+   */
+  async blackboxAnalysis(blackboxConfig) {
+    try {
+      logger.info("Starting blackbox analysis via Python backend", {
+        target_ip: blackboxConfig.target_ip,
+      });
+
+      const response = await this.axiosInstance.post(
+        "/network/blackbox",
+        blackboxConfig,
+        {
+          timeout: 300000, // 5 minutes for blackbox analysis
+        }
+      );
+
+      logger.info("Blackbox analysis completed", {
+        results_count: response.data.results?.length || 0,
+      });
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      logger.error("Failed to run blackbox analysis", {
+        error: error.message,
+        response: error.response?.data,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to run blackbox analysis",
+      };
+    }
+  }
+
+  /**
+   * Initiate whitebox exploitation workflow
+   * @param {Object} whiteboxConfig - Whitebox workflow configuration
+   * @param {string} whiteboxConfig.source_path - Path to source code
+   * @param {string} whiteboxConfig.target_ip - Target IP address
+   * @param {string} whiteboxConfig.target_port - Target port
+   * @param {string} whiteboxConfig.application_name - Application name
+   * @returns {Promise<Object>} Scan ID and status
+   */
+  async whiteboxWorkflow(whiteboxConfig) {
+    try {
+      logger.info("Starting whitebox workflow via Python backend", {
+        source_path: whiteboxConfig.source_path,
+        target_ip: whiteboxConfig.target_ip,
+      });
+
+      const response = await this.axiosInstance.post(
+        "/network/whitebox",
+        whiteboxConfig
+      );
+
+      logger.info("Whitebox workflow initiated", {
+        scan_id: response.data.scan_id,
+      });
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      logger.error("Failed to start whitebox workflow", {
+        error: error.message,
+        response: error.response?.data,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to start whitebox workflow",
+      };
+    }
+  }
 }
 
 export default new PythonBridgeService();
