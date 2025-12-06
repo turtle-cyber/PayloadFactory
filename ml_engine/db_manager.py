@@ -137,7 +137,10 @@ class DatabaseManager:
             if scan_id:
                 self.db['scans'].update_one(
                     {'_id': ObjectId(scan_id)},
-                    {'$inc': {'stats.total_vulns': 1}}
+                    {'$inc': {
+                        'stats.total_vulns': 1,
+                        'progress.vulnerabilities_found': 1
+                    }}
                 )
             
             return finding['finding_id']
@@ -200,7 +203,10 @@ class DatabaseManager:
                 if scan_id:
                     self.db['scans'].update_one(
                         {'_id': ObjectId(scan_id)},
-                        {'$inc': {'stats.total_exploits': 1}}
+                        {'$inc': {
+                            'stats.total_exploits': 1,
+                            'progress.exploits_generated': 1
+                        }}
                     )
 
         except Exception as e:
