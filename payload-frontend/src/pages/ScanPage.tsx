@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "../utils/toast";
 import { http } from "../utils/http";
 import RepositoryCard from "@/components/RepositoryCard";
@@ -97,9 +97,58 @@ const ScanPage: React.FC = () => {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(true);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
+
+  // Start polling for scan progress
+  const startPolling = useCallback((scanId: string) => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await http.get(`/scans/${scanId}/status`);
+        if (response.data.success) {
+          const scanData = response.data.data;
+          setScanProgress(scanData);
+
+          // Save to localStorage on each update
+          saveScanToStorage(scanData);
+
+          // Stop polling if scan is completed, failed, or cancelled
+          const status = scanData.status;
+          if (
+            status === "completed" ||
+            status === "failed" ||
+            status === "cancelled"
+          ) {
+            stopPolling();
+            setIsScanning(false);
+
+            if (status === "completed") {
+              toast.success(
+                "Scan completed",
+                "Your vulnerability scan has finished successfully"
+              );
+            } else if (status === "failed") {
+              toast.error("Scan failed", "The scan encountered an error");
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching scan status:", error);
+      }
+    }, 2000); // Poll every 2 seconds
+  }, [stopPolling]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -140,56 +189,7 @@ const ScanPage: React.FC = () => {
     };
 
     recoverScan();
-  }, []);
-
-  // Start polling for scan progress
-  const startPolling = (scanId: string) => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await http.get(`/scans/${scanId}/status`);
-        if (response.data.success) {
-          const scanData = response.data.data;
-          setScanProgress(scanData);
-
-          // Save to localStorage on each update
-          saveScanToStorage(scanData);
-
-          // Stop polling if scan is completed, failed, or cancelled
-          const status = scanData.status;
-          if (
-            status === "completed" ||
-            status === "failed" ||
-            status === "cancelled"
-          ) {
-            stopPolling();
-            setIsScanning(false);
-
-            if (status === "completed") {
-              toast.success(
-                "Scan completed",
-                "Your vulnerability scan has finished successfully"
-              );
-            } else if (status === "failed") {
-              toast.error("Scan failed", "The scan encountered an error");
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching scan status:", error);
-      }
-    }, 2000); // Poll every 2 seconds
-  };
-
-  const stopPolling = () => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-  };
+  }, [startPolling]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>

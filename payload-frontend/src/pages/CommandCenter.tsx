@@ -185,44 +185,74 @@ const CommandCenter: React.FC = () => {
       : [];
 
   // Transform heatmap data
-  const heatmapChartData =
-    reconAnalyticsData?.severityHeatmap &&
-    reconAnalyticsData.severityHeatmap.length > 0
-      ? (() => {
-          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-          const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
-          const data: Array<{
-            value: [number, number, number];
-            scanCount: number;
-            scans: Array<{ name: string; exploits: number }>;
-            date: string;
-          }> = [];
+  const heatmapChartData = (() => {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
 
-          reconAnalyticsData.severityHeatmap.forEach(
-            (item: {
-              dayOfWeek: number;
-              week: number;
-              intensity: number;
-              scanCount: number;
-              exploitCount: number;
-              date: string;
-              scans: Array<{ name: string; exploits: number }>;
-            }) => {
-              // dayOfWeek: 1=Sunday, 2=Monday, etc. Convert to 0=Monday
-              const dayIndex = item.dayOfWeek === 1 ? 6 : item.dayOfWeek - 2;
-              const weekIndex = Math.min(item.week % 4, 3);
-              data.push({
-                value: [dayIndex, weekIndex, Math.round(item.intensity * 10)],
-                scanCount: item.scanCount,
-                scans: item.scans,
-                date: item.date,
-              });
-            }
-          );
+    // Create a map to store existing data by "dayIndex,weekIndex" key
+    const existingDataMap = new Map<
+      string,
+      {
+        value: [number, number, number];
+        scanCount: number;
+        scans: Array<{ name: string; exploits: number }>;
+        date: string;
+      }
+    >();
 
-          return { xAxisData: days, yAxisData: weeks, data };
-        })()
-      : null;
+    // Populate map with actual data from API
+    if (reconAnalyticsData?.severityHeatmap) {
+      reconAnalyticsData.severityHeatmap.forEach(
+        (item: {
+          dayOfWeek: number;
+          week: number;
+          intensity: number;
+          scanCount: number;
+          exploitCount: number;
+          date: string;
+          scans: Array<{ name: string; exploits: number }>;
+        }) => {
+          // dayOfWeek: 1=Sunday, 2=Monday, etc. Convert to 0=Monday
+          const dayIndex = item.dayOfWeek === 1 ? 6 : item.dayOfWeek - 2;
+          const weekIndex = Math.min(item.week % 4, 3);
+          const key = `${dayIndex},${weekIndex}`;
+          existingDataMap.set(key, {
+            value: [dayIndex, weekIndex, Math.round(item.intensity * 10)],
+            scanCount: item.scanCount,
+            scans: item.scans,
+            date: item.date,
+          });
+        }
+      );
+    }
+
+    // Generate complete grid - fill missing cells with empty data
+    const data: Array<{
+      value: [number, number, number];
+      scanCount: number;
+      scans: Array<{ name: string; exploits: number }>;
+      date: string;
+    }> = [];
+
+    for (let weekIndex = 0; weekIndex < weeks.length; weekIndex++) {
+      for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+        const key = `${dayIndex},${weekIndex}`;
+        if (existingDataMap.has(key)) {
+          data.push(existingDataMap.get(key)!);
+        } else {
+          // Empty cell with value 0 - use same format as filled cells
+          data.push({
+            value: [dayIndex, weekIndex, 0],
+            scanCount: 0,
+            scans: [],
+            date: "",
+          });
+        }
+      }
+    }
+
+    return { xAxisData: days, yAxisData: weeks, data };
+  })();
 
   // Transform OWASP radar data - always show 6 vertices
   const owaspRadarData = (() => {

@@ -1,11 +1,4 @@
-import { ArrowRight, Crosshair, Signpost } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { Signpost } from "lucide-react";
 
 interface GuideCardProps {
   analysis: string;
