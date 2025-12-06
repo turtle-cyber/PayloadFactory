@@ -1,6 +1,10 @@
 import { HTTP_STATUS } from "../config/constants.js";
 import { logger } from "../utils/logger.js";
 import pythonBridge from "../services/python-bridge.service.js";
+import fs from "fs";
+import path from "path";
+import os from "os";
+import AdmZip from "adm-zip";
 
 /**
  * Controller for network reconnaissance endpoints
@@ -240,6 +244,124 @@ class ReconController {
         error: error.message,
         source_path: req.body.source_path,
       });
+      next(error);
+    }
+  }
+
+  /**
+   * Upload ZIP and initiate whitebox exploitation workflow
+   * @route POST /api/recon/whitebox/upload
+   */
+  async whiteboxUpload(req, res, next) {
+    let extractedPath = null;
+
+    try {
+      // Validate file upload
+      if (!req.file) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "No file uploaded. Please upload a ZIP file.",
+        });
+      }
+
+      const { targetIp, targetPort, applicationName } = req.body;
+
+      // Validate target IP
+      if (!targetIp || !targetIp.trim()) {
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "Target IP is required",
+        });
+      }
+
+      logger.info("Processing whitebox ZIP upload", {
+        filename: req.file.originalname,
+        size: req.file.size,
+        targetIp,
+        applicationName,
+      });
+
+      // Validate ZIP file
+      if (!req.file.originalname.toLowerCase().endsWith(".zip")) {
+        fs.unlinkSync(req.file.path);
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "Invalid file type. Please upload a ZIP file.",
+        });
+      }
+
+      // Create a unique directory for extraction
+      const timestamp = Date.now();
+      const extractDir = path.join(
+        os.tmpdir(),
+        "payload-recon",
+        `whitebox_${timestamp}`
+      );
+
+      // Ensure parent directory exists
+      fs.mkdirSync(path.dirname(extractDir), { recursive: true });
+
+      // Extract ZIP file
+      logger.info("Extracting ZIP file", { path: extractDir });
+      const zip = new AdmZip(req.file.path);
+      zip.extractAllTo(extractDir, true);
+
+      extractedPath = extractDir;
+
+      // Clean up the uploaded ZIP file
+      fs.unlinkSync(req.file.path);
+
+      // Call Python backend to start whitebox scan
+      const whiteboxResult = await pythonBridge.whiteboxWorkflow({
+        source_path: extractedPath,
+        target_ip: targetIp.trim(),
+        target_port: targetPort || "80",
+        application_name: applicationName || req.file.originalname.replace(".zip", ""),
+      });
+
+      if (!whiteboxResult.success) {
+        throw new Error(whiteboxResult.error || "Whitebox workflow failed");
+      }
+
+      logger.info("Whitebox workflow initiated", {
+        scan_id: whiteboxResult.data.scan_id,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: "Whitebox scan initiated successfully",
+        data: {
+          scan_id: whiteboxResult.data.scan_id,
+          status: whiteboxResult.data.status,
+          redirect_to_scan: true,
+        },
+      });
+    } catch (error) {
+      logger.error("Error processing whitebox upload", { error: error.message });
+
+      // Clean up on error
+      if (req.file && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          logger.error("Failed to cleanup uploaded file", {
+            error: cleanupError.message,
+          });
+        }
+      }
+
+      if (extractedPath && fs.existsSync(extractedPath)) {
+        try {
+          fs.rmSync(extractedPath, { recursive: true, force: true });
+        } catch (cleanupError) {
+          logger.error("Failed to cleanup extracted files", {
+            error: cleanupError.message,
+          });
+        }
+      }
+
       next(error);
     }
   }
