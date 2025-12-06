@@ -8,7 +8,8 @@ import sys
 import logging
 import json
 # Add project root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
+# Add project root to sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from ml_engine.logger_config import setup_logger
 
 # Configure logging (JSON)
@@ -42,6 +43,15 @@ class PayloadFactoryApp(ctk.CTk):
         
         self.open_exploits_btn = ctk.CTkButton(self.sidebar_frame, text="Open Exploits Folder", command=self.open_exploits_folder)
         self.open_exploits_btn.grid(row=2, column=0, padx=20, pady=10)
+
+        self.clear_db_btn = ctk.CTkButton(
+            self.sidebar_frame, 
+            text="🗑️ Clear Database", 
+            fg_color="#8B0000", 
+            hover_color="#500000",
+            command=self.clear_database_ui
+        )
+        self.clear_db_btn.grid(row=3, column=0, padx=20, pady=10)
 
         # --- Main Area (Tabs) ---
         self.tab_view = ctk.CTkTabview(self, width=800)
@@ -140,18 +150,12 @@ class PayloadFactoryApp(ctk.CTk):
         self.port_label = ctk.CTkLabel(self.attack_frame, text="Port:")
         self.port_label.pack(side="left", padx=(0, 5))
         self.port_entry = ctk.CTkEntry(self.attack_frame, width=60, placeholder_text="80")
-        self.port_entry.pack(side="left", padx=(0, 15))
-        
-        # Auto-Execute Checkbox
-        self.auto_execute_var = ctk.BooleanVar(value=False)
-        self.auto_execute_check = ctk.CTkCheckBox(
-            self.attack_frame, 
-            text="⚡ Auto-Execute",
-            variable=self.auto_execute_var,
-            fg_color="orange", hover_color="darkorange",
-            font=ctk.CTkFont(size=12, weight="bold")
-        )
-        self.auto_execute_check.pack(side="left", padx=(0, 5))
+        self.port_entry.pack(side="left")
+
+        # Auto-Execute Checkbox (Restored)
+        self.auto_exec_var = ctk.BooleanVar(value=False)
+        self.auto_exec_check = ctk.CTkCheckBox(self.attack_frame, text="⚡ Auto-Execute Exploits", variable=self.auto_exec_var, fg_color="red", hover_color="darkred")
+        self.auto_exec_check.pack(side="left", padx=(20, 0))
         
         self.toggle_attack_inputs() # Initialize state
 
@@ -219,7 +223,6 @@ class PayloadFactoryApp(ctk.CTk):
         state = "normal" if self.attack_mode_var.get() else "disabled"
         self.ip_entry.configure(state=state)
         self.port_entry.configure(state=state)
-        self.auto_execute_check.configure(state=state)
 
     def browse_folder(self):
         folder_selected = filedialog.askdirectory()
@@ -290,16 +293,14 @@ class PayloadFactoryApp(ctk.CTk):
             
         if self.demo_mode_var.get():
             cmd.append("--demo-mode")
+
+        if self.auto_exec_var.get():
+            cmd.append("--auto-execute")
         
         # Propagate LLM Model Selection
         model_map = {"Hermes 3": "hermes", "Qwen2.5-VL": "qwen"}
         selected_model = model_map.get(self.model_var.get(), "hermes")
         cmd.extend(["--model", selected_model])
-        
-        # Auto-Execute Mode (Run exploits against target)
-        if self.auto_execute_var.get() and remote_host:
-            cmd.append("--auto-execute")
-            self.log("⚡ AUTO-EXECUTE MODE: Exploits will run against target!")
         
         try:
             # Force UTF-8 encoding for the subprocess output
@@ -349,6 +350,22 @@ class PayloadFactoryApp(ctk.CTk):
         self.console_box.delete("1.0", "end")
         self.console_box.configure(state="disabled")
         self.folder_entry.delete(0, "end")
+
+    def clear_database_ui(self):
+        """Handler for 'Clear Database' button."""
+        # Simple confirmation dialog simulation (or just clear it for MVP)
+        # Deep Thinking: For now, we just execute and show log. Real app should have confirmation.
+        
+        self.log("\n--- CLEARING DATABASE ---")
+        try:
+            from ml_engine.db_manager import DatabaseManager
+            db_manager = DatabaseManager()
+            if db_manager.clear_database():
+                self.log("✅ Database cleared successfully! (All previous scans removed)")
+            else:
+                self.log("❌ Failed to clear database (Check logs)")
+        except Exception as e:
+            self.log(f"Error clearing DB: {e}")
 
     def poll_agent_logs(self):
         """Poll agent logs in a more efficient way"""
@@ -597,11 +614,11 @@ class PayloadFactoryApp(ctk.CTk):
                     self.port_entry.delete(0, "end")
                     self.port_entry.insert(0, first_port)
             
-            self.log(f"\n--- WHITEBOX MODE: Source from {source_path} ---")
+            self.log(f"\\n--- WHITEBOX MODE: Source from {source_path} ---")
             self.log(f"--- Target: {ip} ---")
             
-            # Automatically start the scan (Stage 1)
-            self.after(500, self.start_scan)  # Small delay to let UI update
+            # UX Improvement: Auto-start or prompt
+            self.log(">>> Settings Populated from Network Scan. Click 'Start Scan' to begin! <<<")
         else:
             # Blackbox mode - run CVE matching + exploit lookup + fuzzing
             self.run_blackbox_analysis(ip, ports)

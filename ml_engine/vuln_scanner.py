@@ -413,21 +413,26 @@ Code:
             logger.debug(f"Failed to get LLM details: {e}")
             return None
 
-    def classify_vulnerability(self, code_snippet, paranoid_mode=False):
+    def classify_vulnerability(self, code_snippet, paranoid_mode=False, file_path=""):
         """
         Classifies vulnerability using PATTERN-FIRST approach.
-        
+
         1. First, try pattern-based classification (100% accurate CVE/CWE)
         2. If pattern matches, use verified CVE/CWE from database
         3. Only use LLM for generating exploit details/explanation
         4. If no pattern matches, fall back to LLM (but mark as "unverified")
+
+        Args:
+            code_snippet: Code to analyze
+            paranoid_mode: Enable paranoid mode for stricter analysis
+            file_path: Path to the file being analyzed (used for extension-based pattern matching)
         """
         from ml_engine.cve_database import classify_by_pattern
-        
+
         # =====================================================================
         # STEP 1: Pattern-Based Classification (Preferred - 100% Accurate)
         # =====================================================================
-        pattern_result = classify_by_pattern(code_snippet)
+        pattern_result = classify_by_pattern(code_snippet, file_path)
         
         if pattern_result:
             logger.info(f"[PATTERN] Verified classification: {pattern_result['type']} ({pattern_result['cwe']})")
