@@ -335,7 +335,7 @@ const EChart: React.FC<EChartProps> = (props) => {
             },
           },
           grid: {
-            left: "10%",
+            left: "5%",
             right: "10%",
             top: "10%",
             bottom: "25%",
@@ -343,15 +343,24 @@ const EChart: React.FC<EChartProps> = (props) => {
           xAxis: {
             type: "category",
             data: heatmapProps.data.xAxisData,
-            splitArea: { show: true },
-            axisLine: { lineStyle: { color: "#4b5563" } },
+            splitArea: {
+              show: true,
+              areaStyle: {
+                color: ["transparent", "transparent"],
+              },
+            },
+            axisLine: { lineStyle: { color: "transparent" } },
             axisLabel: { color: "#9ca3af" },
           },
           yAxis: {
             type: "category",
+            position: "right",
             data: heatmapProps.data.yAxisData,
-            splitArea: { show: true },
-            axisLine: { lineStyle: { color: "#4b5563" } },
+            splitArea: {
+              show: true,
+              areaStyle: { color: ["transparent", "transparent"] },
+            },
+            axisLine: { lineStyle: { color: "transparent" } },
             axisLabel: { color: "#9ca3af" },
           },
           visualMap: {
@@ -379,10 +388,15 @@ const EChart: React.FC<EChartProps> = (props) => {
               label: {
                 show: false,
               },
+              itemStyle: {
+                borderWidth: 8,
+                borderRadius: 4,
+                borderColor: "#040810",
+              },
               emphasis: {
                 itemStyle: {
                   shadowBlur: 10,
-                  shadowColor: "rgba(239, 68, 68, 0.5)",
+                  shadowColor: "rgba(143, 70, 70, 0.5)",
                 },
               },
             },
