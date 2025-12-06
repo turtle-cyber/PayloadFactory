@@ -17,7 +17,7 @@ const ReconPage = () => {
   const [services, setServices] = useState<any[]>([]);
   const [analysis, setAnalysis] = useState("");
   const [mode, setMode] = useState<"whitebox" | "blackbox">("whitebox");
-  const [sourcePath, setSourcePath] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -105,8 +105,8 @@ const ReconPage = () => {
 
   // Whitebox handler
   const handleWhitebox = async () => {
-    if (!sourcePath.trim()) {
-      toast.error("Source path required", "Please select source code folder");
+    if (!selectedFile) {
+      toast.error("ZIP file required", "Please select a source code ZIP file");
       return;
     }
 
@@ -117,11 +117,17 @@ const ReconPage = () => {
 
     setIsAnalyzing(true);
     try {
-      const response = await http.post("/api/recon/whitebox", {
-        source_path: sourcePath,
-        target_ip: targetIp,
-        target_port: ports.split(",")[0],
-        application_name: appName || "Whitebox Target",
+      // Create FormData for file upload
+      const uploadData = new FormData();
+      uploadData.append("zipFile", selectedFile);
+      uploadData.append("targetIp", targetIp);
+      uploadData.append("targetPort", ports.split(",")[0]);
+      uploadData.append("applicationName", appName || "Whitebox Target");
+
+      const response = await http.post("/api/recon/whitebox/upload", uploadData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
       if (response.data.success) {
@@ -171,8 +177,8 @@ const ReconPage = () => {
             <ExploitGenerationCard
               mode={mode}
               setMode={setMode}
-              sourcePath={sourcePath}
-              setSourcePath={setSourcePath}
+              selectedFile={selectedFile}
+              onFileSelect={setSelectedFile}
               onGenerate={mode === "whitebox" ? handleWhitebox : handleBlackbox}
               isGenerating={isAnalyzing}
             />
