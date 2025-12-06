@@ -15,6 +15,7 @@ import { homeBg, dashboardBg } from "./helpers/assetExport";
 import "./index.css";
 import FindingPage from "./pages/FindingPage";
 import AgentPage from "./pages/AgentPage";
+import ReconPage from "./pages/ReconPage";
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -73,6 +74,7 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/scan" element={<ScanPage />} />
+          <Route path="/recon" element={<ReconPage />} />
           <Route path="/agent" element={<AgentPage />} />
           <Route path="/command-center" element={<CommandCenter />} />
           <Route path="/results" element={<ResultsPage />} />

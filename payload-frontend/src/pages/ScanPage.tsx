@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { toast } from "../utils/toast";
 import { http } from "../utils/http";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import RepositoryCard from "@/components/RepositoryCard";
+import ExportSettingsCard from "@/components/ExportSettingsCard";
 
 interface FormData {
   applicationName: string;
@@ -104,7 +99,6 @@ const ScanPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup polling on unmount
@@ -209,29 +203,9 @@ const ScanPage: React.FC = () => {
     }));
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.name.toLowerCase().endsWith(".zip")) {
-        toast.error("Invalid file type", "Please select a ZIP file");
-        return;
-      }
-
-      // Validate file size (max 100MB)
-      const maxSize = 100 * 1024 * 1024;
-      if (file.size > maxSize) {
-        toast.error("File too large", "Maximum file size is 100MB");
-        return;
-      }
-
-      setSelectedFile(file);
-      toast.success("File selected", file.name);
-    }
-  };
-
   const handleBrowse = () => {
-    fileInputRef.current?.click();
+    // Placeholder for export path browse functionality
+    toast.info("Browse", "Directory browser not yet implemented");
   };
 
   const handleScan = async () => {
@@ -537,396 +511,34 @@ const ScanPage: React.FC = () => {
 
         {/* Repository Section */}
         <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
-          <div className="flex items-center space-x-3 mb-6">
-            <svg
-              className="w-5 h-5 text-red-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-              />
-            </svg>
-            <h2 className="text-xl font-semibold text-white">
-              Upload Project (ZIP)
-            </h2>
-          </div>
-
-          <div className="space-y-6">
-            {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-
-            {/* Project ZIP Upload */}
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Project ZIP File (Max 100MB)
-              </label>
-              <div className="flex items-center space-x-3">
-                <input
-                  type="text"
-                  value={selectedFile?.name || ""}
-                  placeholder="No file selected"
-                  readOnly
-                  className="flex-1 bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none cursor-not-allowed"
-                />
-                <button
-                  onClick={handleBrowse}
-                  disabled={isScanning || isUploading}
-                  className="px-4 py-3 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  <span>Browse</span>
-                </button>
-              </div>
-              {selectedFile && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Selected: {selectedFile.name} (
-                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                </p>
-              )}
-            </div>
-
-            {/* Application Name */}
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Enter Application Name:
-              </label>
-              <input
-                type="text"
-                name="applicationName"
-                value={formData.applicationName}
-                onChange={handleInputChange}
-                disabled={isScanning || isUploading}
-                className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-
-            {/* Scan Options */}
-            <div className="flex items-center space-x-6">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="quickScan"
-                  checked={formData.quickScan}
-                  onChange={handleInputChange}
-                  disabled={isScanning || isUploading}
-                  className="w-4 h-4 bg-black/50 border border-gray-700/50 rounded text-blue-500 focus:ring-blue-500 disabled:opacity-50"
-                />
-                <span className="text-sm text-gray-300">Quick Scan</span>
-              </label>
-
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="demoMode"
-                  checked={formData.demoMode}
-                  onChange={handleInputChange}
-                  disabled={isScanning || isUploading}
-                  className="w-4 h-4 bg-black/50 border border-gray-700/50 rounded text-blue-500 focus:ring-blue-500 disabled:opacity-50"
-                />
-                <span className="text-sm text-gray-300">Demo Mode</span>
-              </label>
-
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="attackMode"
-                  checked={formData.attackMode}
-                  onChange={handleInputChange}
-                  disabled={isScanning || isUploading}
-                  className="w-4 h-4 bg-black/50 border border-gray-700/50 rounded text-red-500 focus:ring-red-500 disabled:opacity-50"
-                />
-                <span className="text-sm text-gray-300">
-                  Attack Mode (Stage 3)
-                </span>
-                <span className="text-sm text-gray-400">IP:</span>
-                <input
-                  type="text"
-                  name="targetIp"
-                  value={formData.targetIp}
-                  onChange={handleInputChange}
-                  placeholder="192.168.x.x"
-                  disabled={!formData.attackMode || isScanning || isUploading}
-                  className="w-40 bg-black/50 border border-gray-700/50 rounded-lg px-3 py-1 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <span className="text-sm text-gray-400">Port:</span>
-                <input
-                  type="text"
-                  name="targetPort"
-                  value={formData.targetPort}
-                  onChange={handleInputChange}
-                  placeholder="80"
-                  disabled={!formData.attackMode || isScanning || isUploading}
-                  className="w-24 bg-black/50 border border-gray-700/50 rounded-lg px-3 py-1 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </label>
-            </div>
-          </div>
+          <RepositoryCard
+            selectedFile={selectedFile}
+            formData={{
+              applicationName: formData.applicationName,
+              quickScan: formData.quickScan,
+              demoMode: formData.demoMode,
+              attackMode: formData.attackMode,
+              targetIp: formData.targetIp,
+              targetPort: formData.targetPort,
+            }}
+            isScanning={isScanning}
+            isUploading={isUploading}
+            onFileSelect={setSelectedFile}
+            onInputChange={handleInputChange}
+          />
         </div>
-
-        {/* Scan Configuration Section */}
-        {/* <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
-          <div className="flex items-center space-x-3 mb-6">
-            <svg
-              className="w-5 h-5 text-red-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-            <h2 className="text-xl font-semibold text-white">
-              Scan Configuration
-            </h2>
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Max Token Length
-              </label>
-              <div className="relative">
-                <select
-                  name="maxTokenLength"
-                  value={formData.maxTokenLength}
-                  onChange={handleInputChange}
-                  className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white appearance-none focus:outline-none focus:border-red-500/50 transition-colors cursor-pointer"
-                >
-                  <option value="128">128</option>
-                  <option value="256">256</option>
-                  <option value="512">512</option>
-                  <option value="1024">1024</option>
-                  <option value="2048">2048</option>
-                </select>
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <svg
-                    className="w-4 h-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Batch Size
-              </label>
-              <div className="relative">
-                <select
-                  name="batchSize"
-                  value={formData.batchSize}
-                  onChange={handleInputChange}
-                  className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white appearance-none focus:outline-none focus:border-red-500/50 transition-colors cursor-pointer"
-                >
-                  <option value="8">8</option>
-                  <option value="16">16</option>
-                  <option value="32">32</option>
-                  <option value="64">64</option>
-                  <option value="128">128</option>
-                </select>
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <svg
-                    className="w-4 h-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Min Confidence (0.0 - 1.0)
-              </label>
-              <div className="relative">
-                <select
-                  name="minConfidence"
-                  value={formData.minConfidence}
-                  onChange={handleInputChange}
-                  className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white appearance-none focus:outline-none focus:border-red-500/50 transition-colors cursor-pointer"
-                >
-                  <option value="0.1">0.1</option>
-                  <option value="0.2">0.2</option>
-                  <option value="0.3">0.3</option>
-                  <option value="0.4">0.4</option>
-                  <option value="0.5">0.5</option>
-                  <option value="0.6">0.6</option>
-                  <option value="0.7">0.7</option>
-                  <option value="0.8">0.8</option>
-                  <option value="0.9">0.9</option>
-                  <option value="1.0">1.0</option>
-                </select>
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <svg
-                    className="w-4 h-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div> */}
 
         {/* Export Settings Section */}
         <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
-          <div className="flex items-center space-x-3 mb-6">
-            <svg
-              className="w-5 h-5 text-red-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-              />
-            </svg>
-            <h2 className="text-xl font-semibold text-white">
-              Export Settings
-            </h2>
-          </div>
-
-          <div className="space-y-6">
-            {/* Export Project Path */}
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Project Path
-              </label>
-              <div className="flex items-center space-x-3">
-                <input
-                  type="text"
-                  name="exportProjectPath"
-                  value={formData.exportProjectPath}
-                  onChange={handleInputChange}
-                  placeholder="Enter Output File Path"
-                  className="flex-1 bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition-colors"
-                />
-                <button
-                  onClick={() => handleBrowse()}
-                  className="px-4 py-3 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all flex items-center space-x-2"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                    />
-                  </svg>
-                  <span>Browse</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Export Format */}
-            <div>
-              <label className="block text-sm text-gray-400 mb-3">
-                Export Format:
-              </label>
-              <Select
-                value={formData.exportFormat}
-                onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, exportFormat: value }))
-                }
-              >
-                <SelectTrigger className="w-full max-w-md bg-black/50 border border-gray-700/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500/50 transition-colors">
-                  <SelectValue placeholder="Select export format" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border border-gray-700/50">
-                  <SelectItem
-                    value="Excel.xlsx"
-                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
-                  >
-                    Excel.xlsx
-                  </SelectItem>
-                  <SelectItem
-                    value="CSV.csv"
-                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
-                  >
-                    CSV.csv
-                  </SelectItem>
-                  <SelectItem
-                    value="JSON.json"
-                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
-                  >
-                    JSON.json
-                  </SelectItem>
-                  <SelectItem
-                    value="PDF.pdf"
-                    className="text-white hover:bg-gray-800 focus:bg-gray-800 cursor-pointer"
-                  >
-                    PDF.pdf
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <ExportSettingsCard
+            exportProjectPath={formData.exportProjectPath}
+            exportFormat={formData.exportFormat}
+            onInputChange={handleInputChange}
+            onFormatChange={(value) =>
+              setFormData((prev) => ({ ...prev, exportFormat: value }))
+            }
+            onBrowse={handleBrowse}
+          />
         </div>
 
         {/* Action Buttons */}
