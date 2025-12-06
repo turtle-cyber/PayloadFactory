@@ -16,11 +16,59 @@ const OWASP_MAPPING = JSON.parse(readFileSync(owaspMappingPath, "utf8"));
  */
 class AnalyticsService {
   /**
-   * Get severity classification based on confidence score
-   * @param {number} confidence - Confidence score (0-1)
-   * @returns {string} Severity level
+   * Get severity classification matching Python backend standard
+   * Uses CVSS scores, keywords, CVE count, and ML confidence (in priority order)
+   * @param {Object} finding - Finding object with severity indicators
+   * @param {number} finding.confidence - ML confidence score (0-1)
+   * @param {number} finding.cvss_score - CVSS score (0-10) - HIGHEST PRIORITY
+   * @param {Array<string>} finding.keywords - Vulnerability keywords
+   * @param {number} finding.cve_count - Number of CVEs found
+   * @returns {string} Severity level: CRITICAL|HIGH|MEDIUM|LOW
    */
-  getSeverityLevel(confidence) {
+  getSeverityLevel(finding) {
+    // Support legacy calls with just confidence number
+    if (typeof finding === 'number') {
+      const confidence = finding;
+      if (confidence >= 0.8) return "HIGH";
+      if (confidence >= 0.5) return "MEDIUM";
+      return "LOW";
+    }
+
+    const {
+      confidence = 0,
+      cvss_score = null,
+      keywords = [],
+      cve_count = 0
+    } = finding;
+
+    // 1. CVSS Score (HIGHEST PRIORITY - matches Python standard)
+    if (cvss_score !== null && cvss_score !== undefined) {
+      if (cvss_score >= 9.0) return "CRITICAL";
+      if (cvss_score >= 7.0) return "HIGH";
+      if (cvss_score >= 4.0) return "MEDIUM";
+      return "LOW";
+    }
+
+    // 2. Keyword Match (matches Python service_analyzer.py)
+    const criticalKeywords = [
+      'rce', 'remote code execution', 'unauthenticated',
+      'command injection', 'deserialization', 'arbitrary file upload'
+    ];
+    const highKeywords = [
+      'ssrf', 'path traversal', 'stored xss', 'privilege escalation',
+      'ldap injection', 'nosql injection', 'server-side request forgery'
+    ];
+
+    const keywordString = keywords.join(' ').toLowerCase();
+    if (criticalKeywords.some(k => keywordString.includes(k))) return "CRITICAL";
+    if (highKeywords.some(k => keywordString.includes(k))) return "HIGH";
+
+    // 3. CVE Count (matches Python service_analyzer.py)
+    if (cve_count >= 5) return "CRITICAL";
+    if (cve_count >= 3) return "HIGH";
+    if (cve_count >= 1) return "MEDIUM";
+
+    // 4. ML Confidence (FALLBACK ONLY)
     if (confidence >= 0.8) return "HIGH";
     if (confidence >= 0.5) return "MEDIUM";
     return "LOW";
@@ -47,7 +95,7 @@ class AnalyticsService {
         {
           $bucket: {
             groupBy: "$avgConfidence",
-            boundaries: [0, 0.5, 0.8, 1],
+            boundaries: [0, 0.5, 0.8, 0.9, 1],
             default: "unknown",
             output: {
               count: { $sum: 1 },
@@ -57,14 +105,16 @@ class AnalyticsService {
       ])
       .toArray();
 
-    // Transform results into severity labels
+    // Transform results into severity labels (4-tier system matching Python)
     const severityMap = {
       0: "low",
       0.5: "medium",
       0.8: "high",
+      0.9: "critical", // Added CRITICAL tier
     };
 
     const data = {
+      critical: 0,
       high: 0,
       medium: 0,
       low: 0,

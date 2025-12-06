@@ -97,7 +97,7 @@ const ScanPage: React.FC = () => {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(true);
   const [isScanning, setIsScanning] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -393,7 +393,7 @@ const ScanPage: React.FC = () => {
       <div className="max-w-6xl mx-auto space-y-6 px-6">
         {/* Scan Progress Section */}
         {scanProgress && (
-          <div className="glassmorphism-card rounded-xl p-8 border border-blue-500/20">
+          <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <svg

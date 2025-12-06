@@ -2,6 +2,7 @@ import { getDb } from "../utils/mongo-connector.js";
 import { DB_CONFIG } from "../config/database.js";
 import { existsSync } from "fs";
 import { resolve } from "path";
+import analyticsService from "./analytics.service.js";
 
 /**
  * Service layer for findings-related business logic
@@ -40,22 +41,23 @@ class FindingsService {
 
     // Transform findings and count by severity
     const transformedFindings = findings.map((finding) => {
-      // Determine severity based on confidence score
-      let severity = "Unknown";
+      // Use unified severity classification (matches Python backend)
       const confidence = finding.details?.confidence || 0;
+      const cvss_score = finding.details?.cvss_score || null;
+      const keywords = finding.details?.keywords || [];
+      const cve_count = finding.details?.cve_count || 0;
 
-      if (confidence >= 0.9) {
-        severity = "Critical";
-        severityCounts.critical++;
-      } else if (confidence >= 0.7) {
-        severity = "High";
-        severityCounts.high++;
-      } else if (confidence >= 0.5) {
-        severity = "Medium";
-        severityCounts.medium++;
-      } else if (confidence > 0) {
-        severity = "Low";
-        severityCounts.low++;
+      const severity = analyticsService.getSeverityLevel({
+        confidence,
+        cvss_score,
+        keywords,
+        cve_count
+      });
+
+      // Count by severity
+      const severityLower = severity.toLowerCase();
+      if (severityCounts[severityLower] !== undefined) {
+        severityCounts[severityLower]++;
       } else {
         severityCounts.unknown++;
       }

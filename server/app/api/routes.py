@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import List, Dict, Any
+from datetime import datetime
 import sys
 import os
 import logging
@@ -9,6 +11,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 from ml_engine.model import VulnerabilityScanner
 from ml_engine.patch_generator import PatchGenerator
+from ml_engine.network_scanner import NetworkScanner
+from ml_engine.service_analyzer import ServiceAnalyzer
+from ml_engine.blackbox_exploitation import BlackboxExploiter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -94,6 +99,32 @@ def get_rl_agent():
         rl_agent = RLAgent()
     return rl_agent
 
+# Network Recon modules
+network_scanner = None
+service_analyzer = None
+blackbox_exploiter = None
+
+def get_network_scanner():
+    global network_scanner
+    if network_scanner is None:
+        logger.info("Initializing NetworkScanner...")
+        network_scanner = NetworkScanner()
+    return network_scanner
+
+def get_service_analyzer():
+    global service_analyzer
+    if service_analyzer is None:
+        logger.info("Initializing ServiceAnalyzer...")
+        service_analyzer = ServiceAnalyzer(model_id="hermes")
+    return service_analyzer
+
+def get_blackbox_exploiter():
+    global blackbox_exploiter
+    if blackbox_exploiter is None:
+        logger.info("Initializing BlackboxExploiter...")
+        blackbox_exploiter = BlackboxExploiter()
+    return blackbox_exploiter
+
 class ReconRequest(BaseModel):
     url: str
 
@@ -106,6 +137,26 @@ class FuzzRequest(BaseModel):
 
 class RLRequest(BaseModel):
     initial_payload: str
+
+class NetworkScanRequest(BaseModel):
+    target_ip: str
+    ports: str = "21,22,80,443,3306,8080"
+    application_name: str = "Unknown Target"
+
+class ServiceAnalysisRequest(BaseModel):
+    services: List[Dict[str, Any]]
+    model: str = "hermes"
+
+class BlackboxAnalysisRequest(BaseModel):
+    target_ip: str
+    ports: str = "21,22,80,443,3306,8080"
+    services: List[Dict[str, Any]] = []
+
+class WhiteboxWorkflowRequest(BaseModel):
+    source_path: str
+    target_ip: str
+    target_port: str = "80"
+    application_name: str = "Whitebox Target"
 
 @router.post("/recon")
 async def run_recon(request: ReconRequest):
@@ -256,5 +307,151 @@ async def stop_scan(scan_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to stop scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Network Recon Endpoints ---
+
+@router.post("/network/scan")
+async def scan_network_target(request: NetworkScanRequest):
+    """Scan target IP for open ports and services."""
+    try:
+        scanner = get_network_scanner()
+
+        # Parse ports: "80,443" or "1-1000"
+        port_list = []
+        if "-" in request.ports:
+            start, end = request.ports.split("-")
+            port_list = list(range(int(start), int(end) + 1))
+        else:
+            port_list = [int(p.strip()) for p in request.ports.split(",")]
+
+        # Scan target
+        services = scanner.scan_target(request.target_ip, ports=port_list)
+
+        # Convert ServiceInfo to dict
+        service_dicts = []
+        for svc in services:
+            service_dicts.append({
+                "port": svc.port,
+                "state": "open",
+                "service": svc.service,
+                "product": svc.product,
+                "version": svc.version,
+                "banner": svc.banner
+            })
+
+        return {
+            "services": service_dicts,
+            "scan_time": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Network scan failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/network/analyze")
+async def analyze_services(request: ServiceAnalysisRequest):
+    """Analyze discovered services using LLM."""
+    try:
+        analyzer = get_service_analyzer()
+
+        # Re-initialize if model changed
+        if analyzer.model_id != request.model:
+            global service_analyzer
+            service_analyzer = None
+            analyzer = get_service_analyzer()
+
+        analysis_results = []
+        for svc in request.services:
+            analysis = analyzer.analyze_service(svc)
+            formatted = analyzer.format_analysis(analysis)
+
+            analysis_results.append({
+                "port": analysis.port,
+                "service": f"{analysis.service_name} {analysis.version}",
+                "exploitation_steps": formatted,
+                "source_links": analysis.source_code_links,
+                "severity": analysis.risk_level,
+                "cves": [cve.get("id", "") for cve in analysis.cves]
+            })
+
+        return {"analysis": analysis_results}
+    except Exception as e:
+        logger.error(f"Service analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/network/blackbox")
+async def blackbox_analysis(request: BlackboxAnalysisRequest):
+    """Run blackbox exploitation analysis."""
+    try:
+        exploiter = get_blackbox_exploiter()
+
+        # If services not provided, scan first
+        services = request.services
+        if not services:
+            scanner = get_network_scanner()
+            port_list = []
+            if "-" in request.ports:
+                start, end = request.ports.split("-")
+                port_list = list(range(int(start), int(end) + 1))
+            else:
+                port_list = [int(p.strip()) for p in request.ports.split(",")]
+
+            scanned = scanner.scan_target(request.target_ip, ports=port_list)
+            services = [{"port": s.port, "service": s.service, "product": s.product, "version": s.version} for s in scanned]
+
+        # Analyze each service
+        results = []
+        for svc in services:
+            result = exploiter.analyze_service(svc, request.target_ip)
+            formatted = exploiter.format_results(result)
+
+            results.append({
+                "port": result.port,
+                "service": f"{result.service_name} {result.version}",
+                "cve_matches": [{"cve_id": c.cve_id, "severity": c.severity, "cvss_score": c.cvss_score} for c in result.cves[:5]],
+                "exploits": [{"exploit_id": e.exploit_id, "title": e.title, "url": e.url} for e in result.exploits[:3]],
+                "fuzzing_results": {
+                    "endpoints_tested": len(result.fuzzing_results),
+                    "vulnerabilities_found": sum(1 for f in result.fuzzing_results if f.get("vulnerable")),
+                    "interesting_paths": [f.get("payload") for f in result.fuzzing_results[:3] if f.get("vulnerable")]
+                }
+            })
+
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Blackbox analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/network/whitebox")
+async def whitebox_workflow(request: WhiteboxWorkflowRequest):
+    """Initiate whitebox exploitation workflow."""
+    try:
+        if not os.path.isdir(request.source_path):
+            raise HTTPException(status_code=400, detail="Source path does not exist")
+
+        # Trigger full scan with attack mode enabled
+        orchestrator = get_orchestrator()
+        result = orchestrator.start_scan(
+            target_dir=request.source_path,
+            project_name=request.application_name,
+            quick_scan=False,
+            demo_mode=False,
+            remote_host=request.target_ip,
+            remote_port=int(request.target_port),
+            model="hermes"
+        )
+
+        return {
+            "scan_id": result.get("scan_id"),
+            "status": result.get("status", "pending")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Whitebox workflow failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

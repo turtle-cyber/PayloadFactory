@@ -4,6 +4,7 @@ import dashboardRoutes from "./dashboard.routes.js";
 import findingsRoutes from "./findings.routes.js";
 import downloadRoutes from "./download.routes.js";
 import agentRoutes from "./agent.routes.js";
+import reconRoutes from "./recon.routes.js";
 
 const router = express.Router();
 
@@ -13,6 +14,7 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/findings", findingsRoutes);
 router.use("/download", downloadRoutes);
 router.use("/agent", agentRoutes);
+router.use("/recon", reconRoutes);
 
 // Health check for API
 router.get("/health", (req, res) => {

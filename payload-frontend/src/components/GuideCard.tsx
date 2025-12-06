@@ -7,7 +7,11 @@ import {
   SelectValue,
 } from "./ui/select";
 
-const GuideCard = () => {
+interface GuideCardProps {
+  analysis: string;
+}
+
+const GuideCard: React.FC<GuideCardProps> = ({ analysis }) => {
   return (
     <div>
       {/*Heading*/}
@@ -26,7 +30,20 @@ const GuideCard = () => {
           </span>
         </div>
 
-        <div className="border-[#2f2f2f] border items-center bg-[#0d0d0d] p-4 rounded-b-lg h-[40vh] overflow-auto"></div>
+        <div className="border-[#2f2f2f] border bg-[#0d0d0d] p-4 rounded-b-lg h-[40vh] overflow-auto">
+          {analysis ? (
+            <pre className="text-gray-300 text-sm font-mono whitespace-pre-wrap">
+              {analysis}
+            </pre>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-gray-500 text-sm">
+                No analysis available. Run a scan to generate exploitation
+                guidance.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
