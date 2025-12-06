@@ -197,15 +197,16 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                             except: pass
                         
                         # Prepare enhanced finding data
+                        # Handle both nested and top-level field formats
                         vuln_data = {
                             'file_path': file_path,
                             'file_name': file_name,
                             'location': loc_str,
                             'line_number': line_number,
-                            'type': classification.get('type', 'Unknown'),
-                            'severity': classification.get('severity', 'Unknown'),
-                            'cwe_id': classification.get('cwe', 'Unknown'),
-                            'owasp_category': classification.get('owasp', 'Unknown'),
+                            'type': classification.get('type') or vuln.get('type', 'Unknown'),
+                            'severity': classification.get('severity') or vuln.get('severity', 'Unknown'),
+                            'cwe_id': classification.get('cwe') or vuln.get('cwe', 'Unknown'),
+                            'owasp_category': classification.get('owasp') or vuln.get('owasp', 'Unknown'),
                             'details': vuln,
                             'stage': 2
                         }
@@ -218,8 +219,10 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                         logger.error(f"Failed to save intermediate findings/db: {save_err}")
 
                 # Check if we should generate exploit
+                # Handle both formats: classification nested or top-level CVE fields
                 classification = vuln.get('classification', {})
-                cwe = classification.get('cwe', 'Unknown')
+                # Try classification first, then fall back to top-level fields
+                cwe = classification.get('cwe') or vuln.get('cwe', 'Unknown')
                 
                 # Skip if Safe or Unknown (without strong vuln indicators)
                 # STRICTER CHECK: If CWE is Unknown, we only proceed if type is explicitly "Potential Vulnerability"
@@ -229,7 +232,8 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                     continue
                 
                 if cwe == 'Unknown':
-                    vuln_type = classification.get('type', '')
+                    # Check type in both locations
+                    vuln_type = classification.get('type') or vuln.get('type', '')
                     if 'Potential Vulnerability' not in vuln_type:
                         logger.info(f"Skipping exploit generation for {file_name} (Classified as Unknown/Safe)")
                         continue

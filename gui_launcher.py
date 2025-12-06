@@ -549,9 +549,21 @@ class PayloadFactoryApp(ctk.CTk):
                 
                 # Run LLM analysis
                 self.after(0, lambda: self._update_net_analysis("Running LLM analysis... (this may take a moment)"))
-                
+
+                # Get the most recent scan_id from database to pull CVEs
+                scan_id = None
+                try:
+                    from ml_engine.db_manager import DatabaseManager
+                    db = DatabaseManager()
+                    # Get the most recent scan
+                    latest_scan = db.get_latest_scan()
+                    if latest_scan:
+                        scan_id = latest_scan.get('_id')
+                except Exception as e:
+                    print(f"Could not get scan_id: {e}")
+
                 from ml_engine.service_analyzer import ServiceAnalyzer
-                analyzer = ServiceAnalyzer(model_id="hermes")  # Use Hermes for text-only analysis
+                analyzer = ServiceAnalyzer(model_id="hermes", scan_id=str(scan_id) if scan_id else None)
                 
                 analysis_output = []
                 for svc in results:

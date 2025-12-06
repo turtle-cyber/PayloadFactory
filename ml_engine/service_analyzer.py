@@ -66,19 +66,80 @@ For Apache Tomcat, consider: ghostcat (CVE-2020-1938), session persistence RCE (
 
 Output ONLY the JSON object, nothing else."""
 
-    def __init__(self, model_id: str = "hermes"):
+    def __init__(self, model_id: str = "hermes", scan_id: str = None):
         """
         Initialize analyzer with specified LLM.
-        
+
         Args:
             model_id: Model to use ("hermes" for text-only, "qwen" for vision+text)
                       Default is "hermes" as it's more reliable for text-only analysis.
+            scan_id: Optional scan ID to query CVEs from database
         """
         self.model_id = model_id
         self.model = None
         self.tokenizer = None
+        self.scan_id = scan_id
+        self.db_manager = None
+
+        # Initialize database manager if scan_id provided
+        if scan_id:
+            try:
+                from ml_engine.db_manager import DatabaseManager
+                self.db_manager = DatabaseManager()
+            except Exception as e:
+                logger.warning(f"Failed to initialize database manager: {e}")
+
         self._load_model()
     
+    def _get_cves_from_database(self, service_name: str) -> List[Dict[str, str]]:
+        """
+        Query CVEs from the scan database for this service.
+
+        Args:
+            service_name: Name of the service (e.g., "Apache Tomcat")
+
+        Returns:
+            List of CVE dicts with id, description, severity
+        """
+        if not self.db_manager or not self.scan_id:
+            return []
+
+        try:
+            # Query findings from database that have CVE information
+            findings = self.db_manager.get_findings(scan_id=self.scan_id)
+
+            cves = []
+            seen_cves = set()
+
+            for finding in findings:
+                details = finding.get('details', {})
+
+                # Check for CVE in top-level or nested in details
+                cve_id = details.get('cve') or finding.get('cve')
+                cwe_id = details.get('cwe') or finding.get('cwe')
+                severity = details.get('severity') or finding.get('severity', 'Unknown')
+                vuln_type = details.get('type') or finding.get('type', '')
+
+                # Only include if it's an actual CVE (not N/A or Unknown)
+                if cve_id and cve_id not in ['N/A', 'Unknown'] and cve_id not in seen_cves:
+                    description = details.get('details') or details.get('description', vuln_type)
+                    if isinstance(description, str) and len(description) > 200:
+                        description = description[:197] + "..."
+
+                    cves.append({
+                        "id": cve_id,
+                        "description": description or vuln_type,
+                        "severity": severity
+                    })
+                    seen_cves.add(cve_id)
+
+            logger.info(f"Found {len(cves)} CVEs in database for this scan")
+            return cves
+
+        except Exception as e:
+            logger.error(f"Failed to query CVEs from database: {e}")
+            return []
+
     def _load_model(self):
         """Load the LLM model (supports both standard LLMs and Vision-Language models)."""
         try:
@@ -181,19 +242,32 @@ Output ONLY the JSON object, nothing else."""
         try:
             response = self._generate(prompt)
             analysis = self._parse_response(response, service_info)
+
+            # ENHANCEMENT: Merge CVEs from database with LLM CVEs
+            db_cves = self._get_cves_from_database(product)
+            if db_cves:
+                # Add database CVEs first (they're more reliable)
+                existing_cve_ids = {cve['id'] for cve in analysis.cves}
+                for db_cve in db_cves:
+                    if db_cve['id'] not in existing_cve_ids:
+                        analysis.cves.insert(0, db_cve)  # Insert at beginning (prioritize)
+
+                logger.info(f"Merged {len(db_cves)} database CVEs with {len(analysis.cves) - len(db_cves)} LLM CVEs")
+
             return analysis
         except Exception as e:
             logger.error(f"Failed to analyze service: {e}")
-            # Return empty analysis on error
+            # Return empty analysis on error, but still include database CVEs
+            db_cves = self._get_cves_from_database(product)
             return ServiceAnalysis(
                 service_name=service_info.get("product", service_info.get("service", "Unknown")),
                 version=service_info.get("version", "Unknown"),
                 port=service_info.get("port", 0),
                 exploitation_steps=["Analysis failed - manual review required"],
                 source_code_links=[],
-                cves=[],
+                cves=db_cves,  # Still include database CVEs even if LLM fails
                 attack_vectors=[],
-                risk_level="unknown",
+                risk_level="critical" if db_cves else "unknown",
                 notes=f"Analysis error: {str(e)}"
             )
     
