@@ -3,6 +3,7 @@ import { toast } from "../utils/toast";
 import { http } from "../utils/http";
 import RepositoryCard from "@/components/RepositoryCard";
 import ExportSettingsCard from "@/components/ExportSettingsCard";
+import ScanLogCard from "@/components/ScanLogCard";
 
 interface FormData {
   applicationName: string;
@@ -101,7 +102,9 @@ const ScanPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
 
   const stopPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -111,46 +114,49 @@ const ScanPage: React.FC = () => {
   }, []);
 
   // Start polling for scan progress
-  const startPolling = useCallback((scanId: string) => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
+  const startPolling = useCallback(
+    (scanId: string) => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
 
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await http.get(`/scans/${scanId}/status`);
-        if (response.data.success) {
-          const scanData = response.data.data;
-          setScanProgress(scanData);
+      pollingIntervalRef.current = setInterval(async () => {
+        try {
+          const response = await http.get(`/scans/${scanId}/status`);
+          if (response.data.success) {
+            const scanData = response.data.data;
+            setScanProgress(scanData);
 
-          // Save to localStorage on each update
-          saveScanToStorage(scanData);
+            // Save to localStorage on each update
+            saveScanToStorage(scanData);
 
-          // Stop polling if scan is completed, failed, or cancelled
-          const status = scanData.status;
-          if (
-            status === "completed" ||
-            status === "failed" ||
-            status === "cancelled"
-          ) {
-            stopPolling();
-            setIsScanning(false);
+            // Stop polling if scan is completed, failed, or cancelled
+            const status = scanData.status;
+            if (
+              status === "completed" ||
+              status === "failed" ||
+              status === "cancelled"
+            ) {
+              stopPolling();
+              setIsScanning(false);
 
-            if (status === "completed") {
-              toast.success(
-                "Scan completed",
-                "Your vulnerability scan has finished successfully"
-              );
-            } else if (status === "failed") {
-              toast.error("Scan failed", "The scan encountered an error");
+              if (status === "completed") {
+                toast.success(
+                  "Scan completed",
+                  "Your vulnerability scan has finished successfully"
+                );
+              } else if (status === "failed") {
+                toast.error("Scan failed", "The scan encountered an error");
+              }
             }
           }
+        } catch (error) {
+          console.error("Error fetching scan status:", error);
         }
-      } catch (error) {
-        console.error("Error fetching scan status:", error);
-      }
-    }, 2000); // Poll every 2 seconds
-  }, [stopPolling]);
+      }, 2000); // Poll every 2 seconds
+    },
+    [stopPolling]
+  );
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -542,6 +548,13 @@ const ScanPage: React.FC = () => {
               setFormData((prev) => ({ ...prev, exportFormat: value }))
             }
             onBrowse={handleBrowse}
+          />
+        </div>
+
+        <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
+          <ScanLogCard
+            scanId={scanProgress?.scan_id}
+            isScanning={isScanning}
           />
         </div>
 
