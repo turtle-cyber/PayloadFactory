@@ -226,8 +226,13 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
                                     'file_path': file_path,
                                     'file_name': os.path.basename(file_path),
                                     'location': loc_str,
-                                    'line_number': line_number,
-                                    'details': vuln,
+                                    'line_number': vuln.get('line_number', line_number),  # Use scanner's line_number if available
+                                    # CRITICAL: Extract CWE/CVE fields to top level for db_manager
+                                    'cwe_id': vuln.get('cwe') or vuln.get('cwe_id') or 'Unclassified',
+                                    'type': vuln.get('type', 'Potential Vulnerability'),
+                                    'severity': vuln.get('severity', 'Medium'),
+                                    'owasp_category': vuln.get('owasp') or vuln.get('owasp_category', 'Unknown'),
+                                    'details': vuln,  # Keep full vuln as nested details
                                     'stage': 1
                                 }
                                 # Save and capture ID
@@ -259,8 +264,9 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
                     cve_list.add(cve_id)
 
         # If we detected software globally but found no CVEs, force inject them
-        if detected_software and detected_version and total_cves == 0:
-            logger.warning(f"No CVEs detected via per-file scanning. Injecting global CVEs for {detected_software} {detected_version}...")
+        # Also inject if version is "unknown" - better to show all possible CVEs than none
+        if detected_software and total_cves == 0:
+            logger.warning(f"No CVEs detected via per-file scanning. Injecting global CVEs for {detected_software} {detected_version or 'unknown'}...")
 
             # Get CVEs for detected version
             global_cves = cve_db.get_cves_for_version(detected_software, detected_version)

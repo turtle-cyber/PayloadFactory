@@ -226,30 +226,37 @@ class NetworkScanner:
             return []
 
         try:
-            # Prepare configuration
+            # Prepare configuration - REQUIRES ADMIN for best results
+            # NOTE: SYN scan (-sS) provides better version detection but needs admin privileges
+            # Run Python/FastAPI server as Administrator for optimal scanning
             config = {
                 'type': 'default',
-                'version_detection': True, # Always attempt version detection
-                'os_detection': deep_scan,
-                'timing': 4,
-                'skip_ping': True, # Assume host is up
-                'no_dns': True
+                'stealth': True,  # Enable stealth SYN scan (requires admin)
+                'stealth_technique': 'syn',  # -sS = half-open scan
+                'version_detection': True,  # Always attempt version detection
+                'version_intensity': 9,  # Maximum version probing intensity (0-9)
+                'os_detection': False,  # Skip OS detection initially
+                'timing': 4,  # T4 = aggressive timing
+                'skip_ping': True,  # Assume host is up
+                'no_dns': True,  # Skip DNS resolution for speed
+                'scripts': 'default,banner',  # Run default scripts + banner grabbing
             }
 
             if deep_scan:
                 config['type'] = 'aggressive'
-                config['aggressive'] = True # -A
+                config['aggressive'] = True  # -A (includes version detection + scripts)
+                config['os_detection'] = True  # Enable OS detection for deep scan
+                config['scripts'] = 'default,vuln,banner'  # More scripts for deep scan
             
             if ports:
                 # Handle large port lists by converting to range string efficiently
-                # Simple join for now
                 port_str = ",".join(map(str, ports))
                 config['port_range'] = port_str
             else:
-                 if deep_scan:
+                if deep_scan:
                     config['all_ports'] = True
-                 else:
-                    config['type'] = 'quick' # Quick scan if no ports specified
+                else:
+                    config['type'] = 'quick'  # Quick scan if no ports specified
 
             # Resolve Target and Build Args
             clean_ip, hostname = self.parse_target(ip)

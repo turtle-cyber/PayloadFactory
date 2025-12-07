@@ -345,15 +345,44 @@ Code:
                                 is_duplicate = True # Ignore this one
 
                     if not is_duplicate:
-                        vulnerabilities.append({
+                        # CALCULATE LINE NUMBER: Find chunk position in original code and count newlines
+                        try:
+                            # Try to find a unique substring from the chunk in original code
+                            chunk_sample = chunk_text[:100].strip()  # First 100 chars
+                            chunk_pos = code_snippet.find(chunk_sample)
+                            if chunk_pos >= 0:
+                                # Count newlines before this position to get line number
+                                line_number = code_snippet[:chunk_pos].count('\n') + 1
+                            else:
+                                line_number = 0  # Couldn't determine
+                        except:
+                            line_number = 0
+                        
+                        # Create finding with line_number
+                        new_finding = {
                             "type": "Potential Vulnerability (ML Detected)",
                             "details": f"Models detected high probability of vulnerability in code segment.\nUnixCoder: {unix_vuln_score:.2f}\nGraphCodeBERT: {graph_vuln_score:.2f}",
                             "confidence": avg_score,
                             "model_consensus": "High" if (unix_vuln_score > 0.8 and graph_vuln_score > 0.8) else "Mixed",
                             "classification": None, 
                             "location": f"Token Offset {start_idx}-{end_idx}",
-                            "vulnerable_chunk": chunk_text # Store the text for the LLM
-                        })
+                            "line_number": line_number,  # NEW: Actual line number
+                            "vulnerable_chunk": chunk_text
+                        }
+                        
+                        # PATTERN-BASED CWE CLASSIFICATION (Stage 1)
+                        from ml_engine.cve_database import classify_by_pattern
+                        pattern_result = classify_by_pattern(chunk_text, file_path)
+                        if pattern_result:
+                            new_finding["cwe"] = pattern_result["cwe"]
+                            new_finding["type"] = pattern_result["type"]
+                            new_finding["severity"] = pattern_result["severity"]
+                            new_finding["owasp"] = pattern_result.get("owasp", "Unknown")
+                        else:
+                            new_finding["cwe"] = "Unclassified"
+                            new_finding["severity"] = "Medium"  # Default for unclassified ML detections
+                        
+                        vulnerabilities.append(new_finding)
                 
                 # MEMORY MANAGEMENT: Clear cache every 10 windows
                 if (window_idx + 1) % 10 == 0:

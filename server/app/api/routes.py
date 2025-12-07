@@ -140,7 +140,7 @@ class RLRequest(BaseModel):
 
 class NetworkScanRequest(BaseModel):
     target_ip: str
-    ports: str = "21,22,80,443,3306,8080"
+    ports: str = ""  # Empty = nmap auto-detect (quick scan)
     application_name: str = "Unknown Target"
 
 class ServiceAnalysisRequest(BaseModel):
@@ -149,7 +149,7 @@ class ServiceAnalysisRequest(BaseModel):
 
 class BlackboxAnalysisRequest(BaseModel):
     target_ip: str
-    ports: str = "21,22,80,443,3306,8080"
+    ports: str = ""  # Empty = nmap auto-detect (quick scan)
     services: List[Dict[str, Any]] = []
 
 class WhiteboxWorkflowRequest(BaseModel):
@@ -318,13 +318,16 @@ async def scan_network_target(request: NetworkScanRequest):
     try:
         scanner = get_network_scanner()
 
-        # Parse ports: "80,443" or "1-1000"
-        port_list = []
-        if "-" in request.ports:
-            start, end = request.ports.split("-")
-            port_list = list(range(int(start), int(end) + 1))
-        else:
-            port_list = [int(p.strip()) for p in request.ports.split(",")]
+        # Parse ports: "80,443" or "1-1000" or "" for auto-detect
+        port_list = None  # None = nmap auto-detect (quick scan)
+        if request.ports and request.ports.strip():
+            if "-" in request.ports:
+                start, end = request.ports.split("-")
+                port_list = list(range(int(start), int(end) + 1))
+            else:
+                port_list = [int(p.strip()) for p in request.ports.split(",") if p.strip()]
+        
+        logger.info(f"Port scan mode: {'auto-detect (quick)' if port_list is None else f'{len(port_list)} ports'}")
 
         # Scan target
         services = scanner.scan_target(request.target_ip, ports=port_list)
@@ -392,12 +395,14 @@ async def blackbox_analysis(request: BlackboxAnalysisRequest):
         services = request.services
         if not services:
             scanner = get_network_scanner()
-            port_list = []
-            if "-" in request.ports:
-                start, end = request.ports.split("-")
-                port_list = list(range(int(start), int(end) + 1))
-            else:
-                port_list = [int(p.strip()) for p in request.ports.split(",")]
+            # Same logic as /network/scan: empty = auto-detect
+            port_list = None
+            if request.ports and request.ports.strip():
+                if "-" in request.ports:
+                    start, end = request.ports.split("-")
+                    port_list = list(range(int(start), int(end) + 1))
+                else:
+                    port_list = [int(p.strip()) for p in request.ports.split(",") if p.strip()]
 
             scanned = scanner.scan_target(request.target_ip, ports=port_list)
             services = [{"port": s.port, "service": s.service, "product": s.product, "version": s.version} for s in scanned]

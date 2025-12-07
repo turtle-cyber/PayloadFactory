@@ -41,30 +41,45 @@ class ServiceAnalyzer:
     """
     
     # Prompt template for service analysis
-    ANALYSIS_PROMPT = """[SECURITY RESEARCHER MODE] You are analyzing a target for penetration testing.
+    ANALYSIS_PROMPT = """You are a penetration testing expert. Analyze the discovered service and provide ACTIONABLE exploitation guidance.
 
-TARGET SERVICE:
-Product: {service_name}
-Version: {version}
-Port: {port}
-Banner: {banner}
-Info: {extra_info}
+TARGET:
+- Service: {service_name}
+- Version: {version}
+- Port: {port}
+- Banner: {banner}
+- Extra Info: {extra_info}
 
-Provide a security assessment in JSON format. Include REAL CVE identifiers, ACTUAL exploit techniques, and WORKING proof-of-concept approaches for this specific version.
+Respond with a valid JSON object containing:
 
-Your response must be a valid JSON object with these exact keys:
-- "exploitation_steps": list of strings describing how to exploit this service (use real tools like metasploit, nmap scripts, curl commands)
-- "cves": list of objects with "id", "description", "severity" (find CVEs affecting {service_name} version {version})
-- "attack_vectors": list of attack types possible (RCE, auth bypass, file upload, etc)
-- "source_code_links": list of objects with "name" and "url" pointing to official repos
-- "tools_needed": list of tools required for exploitation
-- "vm_setup": object with "os", "install_commands" for setting up a test lab
-- "risk_level": one of "critical", "high", "medium", "low"
-- "notes": additional security observations
+{{
+  "exploitation_steps": [
+    "Step 1: Check for default credentials (admin:admin, tomcat:tomcat)",
+    "Step 2: Use nmap --script http-vuln-* to detect known vulnerabilities",
+    "Step 3: If manager app accessible, deploy malicious WAR file",
+    "..."
+  ],
+  "attack_vectors": ["RCE", "Authentication Bypass", "File Upload"],
+  "tools_needed": ["nmap", "metasploit", "curl", "gobuster"],
+  "source_code_links": [
+    {{"name": "Official Repo", "url": "https://github.com/..."}}
+  ],
+  "vm_setup": {{
+    "os": "Ubuntu 22.04",
+    "install_commands": ["apt install openjdk-11-jdk", "wget tomcat.tar.gz"]
+  }},
+  "risk_level": "critical|high|medium|low",
+  "notes": "Additional observations about the target"
+}}
 
-For Apache Tomcat, consider: ghostcat (CVE-2020-1938), session persistence RCE (CVE-2020-9484), manager webapp exploits, default credentials, JSP upload, etc.
+RULES:
+1. Provide REAL, WORKING exploitation steps using actual tools
+2. Do NOT invent CVE numbers - leave the "cves" field empty (we add CVEs separately)
+3. Be specific to {service_name} version {version}
+4. For web services, include paths like /manager, /admin, /console
+5. Include Metasploit module names if applicable (e.g., exploit/multi/http/tomcat_mgr_upload)
 
-Output ONLY the JSON object, nothing else."""
+Output ONLY the JSON object, no explanations."""
 
     def __init__(self, model_id: str = "hermes", scan_id: str = None):
         """
@@ -139,6 +154,80 @@ Output ONLY the JSON object, nothing else."""
         except Exception as e:
             logger.error(f"Failed to query CVEs from database: {e}")
             return []
+
+    def _get_known_service_cves(self, service_name: str, version: str = "") -> List[Dict[str, str]]:
+        """
+        Get known CVEs for common services (standalone, no database required).
+        This enables CVE data for blackbox recon without prior whitebox scans.
+        
+        Args:
+            service_name: Service name (e.g., "Apache Tomcat", "nginx")
+            version: Optional version string
+            
+        Returns:
+            List of CVE dicts with id, description, severity
+        """
+        # Normalize service name for matching
+        service_lower = service_name.lower()
+        
+        # Known CVEs for common services
+        KNOWN_CVES = {
+            "apache tomcat": [
+                {"id": "CVE-2024-50379", "description": "TOCTOU Race Condition RCE via partial PUT requests", "severity": "Critical"},
+                {"id": "CVE-2024-52318", "description": "XSS in JSP/Tag files due to improper output escaping", "severity": "Medium"},
+                {"id": "CVE-2024-52317", "description": "Request/Response mix-up with HTTP/2 causing data leakage", "severity": "High"},
+                {"id": "CVE-2024-52316", "description": "Authentication bypass when using Jakarta Authentication", "severity": "Critical"},
+                {"id": "CVE-2024-38286", "description": "DoS via TLS handshake abort causing OutOfMemoryError", "severity": "High"},
+                {"id": "CVE-2024-34750", "description": "DoS via improper HTTP/2 stream handling", "severity": "High"},
+                {"id": "CVE-2024-23672", "description": "DoS via malformed WebSocket frames", "severity": "High"},
+                {"id": "CVE-2020-1938", "description": "Ghostcat - AJP File Read/Inclusion vulnerability", "severity": "Critical"},
+                {"id": "CVE-2020-9484", "description": "RCE via Session Persistence deserialization", "severity": "Critical"},
+                {"id": "CVE-2019-0232", "description": "CGI Servlet RCE on Windows", "severity": "Critical"},
+                {"id": "CVE-2017-12617", "description": "Remote code execution via PUT method", "severity": "Critical"},
+            ],
+            "nginx": [
+                {"id": "CVE-2021-23017", "description": "DNS resolver off-by-one heap write", "severity": "High"},
+                {"id": "CVE-2019-20372", "description": "HTTP Request Smuggling", "severity": "Medium"},
+                {"id": "CVE-2017-7529", "description": "Integer overflow in range filter", "severity": "High"},
+            ],
+            "apache httpd": [
+                {"id": "CVE-2021-41773", "description": "Path traversal and RCE", "severity": "Critical"},
+                {"id": "CVE-2021-42013", "description": "Path traversal fix bypass", "severity": "Critical"},
+                {"id": "CVE-2021-40438", "description": "SSRF via mod_proxy", "severity": "Critical"},
+            ],
+            "openssh": [
+                {"id": "CVE-2024-6387", "description": "regreSSHion - Remote code execution in sshd", "severity": "Critical"},
+                {"id": "CVE-2023-38408", "description": "Remote code execution via ssh-agent", "severity": "Critical"},
+            ],
+            "mysql": [
+                {"id": "CVE-2016-6662", "description": "Remote root code execution", "severity": "Critical"},
+                {"id": "CVE-2012-2122", "description": "Authentication bypass", "severity": "Critical"},
+            ],
+            "redis": [
+                {"id": "CVE-2022-0543", "description": "Lua sandbox escape leading to RCE", "severity": "Critical"},
+                {"id": "CVE-2015-8080", "description": "Integer overflow in YAML parser", "severity": "High"},
+            ],
+            "mongodb": [
+                {"id": "CVE-2017-2665", "description": "Default configuration allows unauthenticated access", "severity": "Critical"},
+            ],
+            "smb": [
+                {"id": "CVE-2017-0144", "description": "EternalBlue - Remote code execution", "severity": "Critical"},
+                {"id": "CVE-2020-0796", "description": "SMBGhost - Remote code execution", "severity": "Critical"},
+            ],
+        }
+        
+        # Find matching service
+        for key, cves in KNOWN_CVES.items():
+            if key in service_lower or service_lower in key:
+                logger.info(f"Found {len(cves)} known CVEs for {service_name}")
+                return cves
+        
+        # Check for port-based fallback (e.g., "Service on port 8080" -> likely Tomcat)
+        if "8080" in service_name or "tomcat" in service_lower:
+            logger.info("Port 8080 detected - returning Tomcat CVEs")
+            return KNOWN_CVES.get("apache tomcat", [])
+        
+        return []
 
     def _load_model(self):
         """Load the LLM model (supports both standard LLMs and Vision-Language models)."""
@@ -243,31 +332,44 @@ Output ONLY the JSON object, nothing else."""
             response = self._generate(prompt)
             analysis = self._parse_response(response, service_info)
 
-            # ENHANCEMENT: Merge CVEs from database with LLM CVEs
+            # ENHANCEMENT: Merge CVEs from multiple sources
+            # Priority: 1. Database CVEs, 2. Known service CVEs, 3. LLM CVEs
+            existing_cve_ids = {cve['id'] for cve in analysis.cves}
+            
+            # Add database CVEs (most reliable for this specific scan)
             db_cves = self._get_cves_from_database(product)
-            if db_cves:
-                # Add database CVEs first (they're more reliable)
-                existing_cve_ids = {cve['id'] for cve in analysis.cves}
-                for db_cve in db_cves:
-                    if db_cve['id'] not in existing_cve_ids:
-                        analysis.cves.insert(0, db_cve)  # Insert at beginning (prioritize)
-
-                logger.info(f"Merged {len(db_cves)} database CVEs with {len(analysis.cves) - len(db_cves)} LLM CVEs")
+            for db_cve in db_cves:
+                if db_cve['id'] not in existing_cve_ids:
+                    analysis.cves.insert(0, db_cve)
+                    existing_cve_ids.add(db_cve['id'])
+            
+            # Add known service CVEs (reliable hardcoded data)
+            known_cves = self._get_known_service_cves(product, service_info.get("version", ""))
+            for known_cve in known_cves:
+                if known_cve['id'] not in existing_cve_ids:
+                    analysis.cves.append(known_cve)
+                    existing_cve_ids.add(known_cve['id'])
+            
+            if db_cves or known_cves:
+                logger.info(f"Total CVEs: {len(analysis.cves)} (DB: {len(db_cves)}, Known: {len(known_cves)}, LLM: {len(analysis.cves) - len(db_cves) - len(known_cves)})")
 
             return analysis
         except Exception as e:
             logger.error(f"Failed to analyze service: {e}")
-            # Return empty analysis on error, but still include database CVEs
+            # Return fallback analysis with known CVEs
+            known_cves = self._get_known_service_cves(product, service_info.get("version", ""))
             db_cves = self._get_cves_from_database(product)
+            all_cves = db_cves + [c for c in known_cves if c['id'] not in {d['id'] for d in db_cves}]
+            
             return ServiceAnalysis(
                 service_name=service_info.get("product", service_info.get("service", "Unknown")),
                 version=service_info.get("version", "Unknown"),
                 port=service_info.get("port", 0),
                 exploitation_steps=["Analysis failed - manual review required"],
                 source_code_links=[],
-                cves=db_cves,  # Still include database CVEs even if LLM fails
+                cves=all_cves,  # Include all available CVEs
                 attack_vectors=[],
-                risk_level="critical" if db_cves else "unknown",
+                risk_level="critical" if all_cves else "unknown",
                 notes=f"Analysis error: {str(e)}"
             )
     

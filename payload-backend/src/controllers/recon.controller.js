@@ -35,7 +35,7 @@ class ReconController {
       // Call Python backend for network scanning
       const scanResult = await pythonBridge.scanNetwork({
         target_ip: target_ip.trim(),
-        ports: ports || "21,22,80,443,3306,8080",
+        ports: ports && ports.trim() ? ports.trim() : undefined,
         application_name: application_name || "Unknown Target",
       });
 
@@ -148,7 +148,7 @@ class ReconController {
       // Call Python backend for blackbox analysis
       const blackboxResult = await pythonBridge.blackboxAnalysis({
         target_ip: target_ip.trim(),
-        ports: ports || "21,22,80,443,3306,8080",
+        ports: ports && ports.trim() ? ports.trim() : undefined,
         services: services || [],
       });
 

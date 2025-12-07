@@ -12,7 +12,7 @@ const ReconPage = () => {
 
   // State management
   const [targetIp, setTargetIp] = useState("");
-  const [ports, setPorts] = useState("21,22,80,443,3306,8080");
+  const [ports, setPorts] = useState("");
   const [appName, setAppName] = useState("");
   const [services, setServices] = useState<any[]>([]);
   const [analysis, setAnalysis] = useState("");
@@ -20,6 +20,52 @@ const ReconPage = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedServiceIndex, setSelectedServiceIndex] = useState<number | null>(null);
+  const [serviceAnalyses, setServiceAnalyses] = useState<any[]>([]);
+  const [acknowledgmentChecked, setAcknowledgmentChecked] = useState(false);
+
+  // Service selection handler
+  const handleServiceSelect = (index: number) => {
+    console.log("=== Service Selection Debug ===");
+    console.log("Selected index:", index);
+    console.log("Total service analyses:", serviceAnalyses.length);
+    console.log("Service analyses array:", serviceAnalyses);
+    console.log("Analysis at selected index:", serviceAnalyses[index]);
+
+    setSelectedServiceIndex(index);
+    if (serviceAnalyses[index]) {
+      const analysisData = serviceAnalyses[index];
+
+      // Try different possible fields for the LLM analysis
+      let exploitSteps = "";
+
+      if (typeof analysisData.exploitation_steps === 'string') {
+        exploitSteps = analysisData.exploitation_steps;
+      } else if (Array.isArray(analysisData.exploitation_steps)) {
+        exploitSteps = analysisData.exploitation_steps.join('\n');
+      } else if (analysisData.llm_analysis) {
+        exploitSteps = analysisData.llm_analysis;
+      } else if (analysisData.analysis) {
+        exploitSteps = analysisData.analysis;
+      } else if (analysisData.raw_output) {
+        exploitSteps = analysisData.raw_output;
+      } else {
+        // Fallback: show the entire object
+        exploitSteps = JSON.stringify(analysisData, null, 2);
+      }
+
+      console.log("Exploit steps to display:", exploitSteps);
+      setAnalysis(exploitSteps);
+    } else {
+      console.log("No analysis found at this index");
+    }
+    setAcknowledgmentChecked(false);
+  };
+
+  // Acknowledgment handler
+  const handleAcknowledgmentChange = (checked: boolean) => {
+    setAcknowledgmentChecked(checked);
+  };
 
   // Scan handler
   const handleScan = async () => {
@@ -30,7 +76,7 @@ const ReconPage = () => {
 
     setIsScanning(true);
     try {
-      const response = await http.post("/api/recon/scan", {
+      const response = await http.post("/recon/scan", {
         target_ip: targetIp,
         ports: ports,
         application_name: appName || "Unknown Target",
@@ -45,17 +91,19 @@ const ReconPage = () => {
 
         // Auto-analyze
         if (response.data.data.services.length > 0) {
-          const analysisResponse = await http.post("/api/recon/analyze", {
+          const analysisResponse = await http.post("/recon/analyze", {
             services: response.data.data.services,
             model: "hermes",
           });
 
           if (analysisResponse.data.success) {
-            setAnalysis(
-              analysisResponse.data.data.analysis
-                .map((a: any) => a.exploitation_steps)
-                .join("\n\n")
-            );
+            console.log("=== Auto-Analyze Debug ===");
+            console.log("Analysis response:", analysisResponse.data.data.analysis);
+            console.log("Number of analyses:", analysisResponse.data.data.analysis.length);
+            setServiceAnalyses(analysisResponse.data.data.analysis);
+            setAnalysis("");
+            setSelectedServiceIndex(null);
+            setAcknowledgmentChecked(false);
           }
         }
       }
@@ -75,7 +123,7 @@ const ReconPage = () => {
 
     setIsAnalyzing(true);
     try {
-      const response = await http.post("/api/recon/blackbox", {
+      const response = await http.post("/recon/blackbox", {
         target_ip: targetIp,
         ports: ports,
         services: services,
@@ -124,7 +172,7 @@ const ReconPage = () => {
       uploadData.append("targetPort", ports.split(",")[0]);
       uploadData.append("applicationName", appName || "Whitebox Target");
 
-      const response = await http.post("/api/recon/whitebox/upload", uploadData, {
+      const response = await http.post("/recon/whitebox/upload", uploadData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
@@ -164,12 +212,20 @@ const ReconPage = () => {
 
           {/*Fingerprints Table */}
           <div>
-            <FingerprintTable services={services} />
+            <FingerprintTable
+              services={services}
+              selectedServiceIndex={selectedServiceIndex}
+              onServiceSelect={handleServiceSelect}
+            />
           </div>
 
           {/*Guide Card */}
           <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-            <GuideCard analysis={analysis} />
+            <GuideCard
+              analysis={analysis}
+              acknowledgmentChecked={acknowledgmentChecked}
+              onAcknowledgmentChange={handleAcknowledgmentChange}
+            />
           </div>
 
           {/*Exploit Generation Window */}
@@ -181,6 +237,7 @@ const ReconPage = () => {
               onFileSelect={setSelectedFile}
               onGenerate={mode === "whitebox" ? handleWhitebox : handleBlackbox}
               isGenerating={isAnalyzing}
+              disabled={!acknowledgmentChecked}
             />
           </div>
         </div>

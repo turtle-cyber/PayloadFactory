@@ -9,9 +9,15 @@ interface Service {
 
 interface FingerprintTableProps {
   services: Service[];
+  selectedServiceIndex: number | null;
+  onServiceSelect: (index: number) => void;
 }
 
-const FingerprintTable: React.FC<FingerprintTableProps> = ({ services }) => {
+const FingerprintTable: React.FC<FingerprintTableProps> = ({
+  services,
+  selectedServiceIndex,
+  onServiceSelect
+}) => {
   return (
     <>
       <div className="py-2 px-4 rounded-lg bg-[#2f2f2f]">
@@ -34,13 +40,15 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({ services }) => {
               <th className="text-left p-4 text-sm font-semibold text-gray-400">
                 VERSION
               </th>
+              <th className="text-center p-4 text-sm font-semibold text-gray-400">
+              </th>
             </tr>
           </thead>
           <tbody>
             {services.length === 0 ? (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="text-center p-8 text-gray-500 text-sm"
                 >
                   No services found. Run a scan to discover services.
@@ -50,7 +58,9 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({ services }) => {
               services.map((service, index) => (
                 <tr
                   key={index}
-                  className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                  className={`border-b border-gray-800 hover:bg-gray-800/30 transition-colors ${
+                    selectedServiceIndex === index ? 'bg-blue-500/10' : ''
+                  }`}
                 >
                   <td className="p-4 text-sm text-blue-400 font-mono">
                     {service.port}
@@ -64,7 +74,18 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({ services }) => {
                     {service.product || service.service || "unknown"}
                   </td>
                   <td className="p-4 text-sm text-gray-400 font-mono">
-                    {service.version || "N/A"}
+                    {service.version && service.version !== "unknown" ? service.version : "Unclassified"}
+                  </td>
+                  <td className="p-4 text-center">
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="radio"
+                        name="service-selection"
+                        checked={selectedServiceIndex === index}
+                        onChange={() => onServiceSelect(index)}
+                        className="w-5 h-5 cursor-pointer accent-blue-500"
+                      />
+                    </div>
                   </td>
                 </tr>
               ))

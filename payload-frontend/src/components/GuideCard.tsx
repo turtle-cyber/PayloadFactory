@@ -2,9 +2,15 @@ import { Signpost } from "lucide-react";
 
 interface GuideCardProps {
   analysis: string;
+  acknowledgmentChecked: boolean;
+  onAcknowledgmentChange: (checked: boolean) => void;
 }
 
-const GuideCard: React.FC<GuideCardProps> = ({ analysis }) => {
+const GuideCard: React.FC<GuideCardProps> = ({
+  analysis,
+  acknowledgmentChecked,
+  onAcknowledgmentChange
+}) => {
   return (
     <div>
       {/*Heading*/}
@@ -37,6 +43,26 @@ const GuideCard: React.FC<GuideCardProps> = ({ analysis }) => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Acknowledgment Checkbox */}
+      <div className="mt-4 flex items-center gap-3 p-4 bg-[#1a1714] rounded-lg border border-[#2f2f2f]">
+        <input
+          type="checkbox"
+          id="guide-acknowledgment"
+          checked={acknowledgmentChecked}
+          onChange={(e) => onAcknowledgmentChange(e.target.checked)}
+          disabled={!analysis}
+          className="w-5 h-5 cursor-pointer accent-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        <label
+          htmlFor="guide-acknowledgment"
+          className={`text-sm cursor-pointer select-none ${
+            analysis ? 'text-gray-300' : 'text-gray-500'
+          }`}
+        >
+          To proceed, acknowledge that you've read the guide.
+        </label>
       </div>
     </div>
   );

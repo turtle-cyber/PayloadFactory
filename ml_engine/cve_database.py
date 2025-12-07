@@ -682,9 +682,9 @@ class CVEDatabase:
 
         for cve in software_cves:
             if detected_version == "unknown":
-                # Return all CVEs if version unknown (conservative approach)
-                matching_cves.append(cve)
-                continue
+                # User preference: Don't guess CVEs for unknown versions
+                logger.info(f"Version unknown for {software_name}. Skipping CVE matching.")
+                return []
 
             # Parse version
             try:
@@ -762,10 +762,8 @@ class CVEDatabase:
             if "relevant_files" in cve:
                 if not re.search(cve["relevant_files"], file_path, re.IGNORECASE) and not re.search(cve["relevant_files"], code_content, re.IGNORECASE):
                     continue
+            # If no relevant_files defined, this is a global CVE - skip per-file, handled by Global injection in scan_stage_1.py
             else:
-                # If no relevant_files pattern is defined, this is likely a general CVE.
-                # We should NOT attach it to random files (like Utilities.java).
-                # Skipping here ensures it's only reported by the Global handler.
                 continue
             
             cve_finding = {
