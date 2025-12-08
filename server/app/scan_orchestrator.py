@@ -49,7 +49,8 @@ class ScanOrchestrator:
         demo_mode: bool = False,
         remote_host: Optional[str] = None,
         remote_port: Optional[int] = None,
-        model: Optional[str] = "hermes"
+        model: Optional[str] = "hermes",
+        auto_execute: bool = False  # NEW: Enable auto-execution of exploits in Stage 3
     ) -> Dict[str, Any]:
         """
         Start a new scan in a background thread.
@@ -85,6 +86,7 @@ class ScanOrchestrator:
             "remote_host": remote_host,
             "remote_port": remote_port,
             "model": model or "hermes",
+            "auto_execute": auto_execute,  # NEW: Auto-execute exploits in Stage 3
             "thread": None,
             "cancelled": False
         }
@@ -190,12 +192,16 @@ class ScanOrchestrator:
             ]
             if config["demo_mode"]:
                 stage2_cmd.append("--demo-mode")
+            if config["quick_scan"]:
+                stage2_cmd.append("--skip-other-files")  # Skip extra file types in quick mode
             if config.get("model"):
                 stage2_cmd.extend(["--model", config["model"]])
             if config["remote_host"]:
                 stage2_cmd.extend(["--remote-host", config["remote_host"]])
             if config["remote_port"]:
                 stage2_cmd.extend(["--remote-port", str(config["remote_port"])])
+            if config.get("auto_execute"):
+                stage2_cmd.append("--auto-execute")  # Pass to Stage 2 for exploit gen context
             
             result = subprocess.run(stage2_cmd, capture_output=True, text=True)
             if result.returncode != 0:
@@ -220,6 +226,8 @@ class ScanOrchestrator:
                 stage3_cmd.extend(["--remote-host", config["remote_host"]])
             if config["remote_port"]:
                 stage3_cmd.extend(["--remote-port", str(config["remote_port"])])
+            if config.get("auto_execute"):
+                stage3_cmd.append("--auto-execute")  # CRITICAL: Enable exploit execution
             
             result = subprocess.run(stage3_cmd, capture_output=True, text=True)
             if result.returncode != 0:
