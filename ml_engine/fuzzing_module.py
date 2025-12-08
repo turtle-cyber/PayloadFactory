@@ -233,6 +233,8 @@ class Fuzzer:
         """
         Check if response indicates successful RCE.
         
+        REAL ATTACK MODE: Comprehensive detection for Linux, Windows, Java, and Tomcat.
+        
         Returns:
             tuple: (success: bool, indicator: str)
         """
@@ -245,42 +247,107 @@ class Fuzzer:
         except:
             response_str = str(response_data)
         
-        # RCE indicators
-        indicators = [
+        # ============================================================
+        # COMPREHENSIVE RCE INDICATORS (Real Attack Mode)
+        # ============================================================
+        
+        # Linux RCE Indicators
+        linux_indicators = [
             ("uid=", "Linux id command output"),
             ("gid=", "Linux id command output"),
             ("root:", "/etc/passwd content"),
             ("/bin/bash", "Shell path"),
-            ("Windows", "Windows system info"),
-            ("SYSTEM", "Windows SYSTEM user"),
+            ("/bin/sh", "Shell path"),
+            ("nobody:", "/etc/passwd entry"),
+            ("www-data:", "Web user in /etc/passwd"),
+            ("Linux version", "Kernel info"),
         ]
         
-        for pattern, description in indicators:
+        # Windows RCE Indicators
+        windows_indicators = [
+            ("SYSTEM", "Windows SYSTEM user"),
+            ("Administrator", "Windows Admin user"),
+            ("NT AUTHORITY", "Windows NT Authority"),
+            ("Windows NT", "Windows system info"),
+            ("C:\\Windows", "Windows filesystem path"),
+            ("C:\\Users", "Windows Users folder"),
+            ("Microsoft Windows", "Windows version string"),
+            ("Volume Serial Number", "Windows dir command"),
+            ("Directory of", "Windows dir listing"),
+            ("\\System32", "Windows System32 path"),
+            ("COMPUTERNAME=", "Windows env variable"),
+            ("USERDOMAIN=", "Windows domain var"),
+            ("whoami", "Windows whoami output"),
+            ("HOSTNAME=", "Hostname env var"),
+        ]
+        
+        # Java/Tomcat Specific Indicators
+        java_indicators = [
+            ("java.lang.Runtime", "Java Runtime class"),
+            ("ProcessBuilder", "Java ProcessBuilder"),
+            ("catalina.home", "Tomcat home path"),
+            ("java.version", "Java version property"),
+            ("os.name", "Java OS name property"),
+            ("user.name", "Java user name property"),
+            ("CATALINA_HOME", "Tomcat env variable"),
+            ("WEB-INF", "Java webapp internal folder"),
+            ("web.xml", "Java webapp config"),
+        ]
+        
+        # Command output patterns (generic)
+        command_indicators = [
+            ("total ", "ls -l output"),
+            ("drwx", "Unix directory permissions"),
+            ("-rw-", "Unix file permissions"),
+        ]
+        
+        # Check all indicator categories
+        all_indicators = linux_indicators + windows_indicators + java_indicators + command_indicators
+        
+        for pattern, description in all_indicators:
             if pattern in response_str:
                 return True, description
         
-        # Check for date command output pattern
+        # Regex patterns for date/time (command execution proof)
         import re
-        date_pattern = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2}"
-        if re.search(date_pattern, response_str):
-            return True, "Date command output"
+        
+        # Unix date format: "Mon Dec  8 10:30:00 UTC 2025"
+        unix_date_pattern = r"[A-Z][a-z]{2} [A-Z][a-z]{2}\s+\d{1,2} \d{2}:\d{2}:\d{2}"
+        if re.search(unix_date_pattern, response_str):
+            return True, "Unix date command output"
+        
+        # Windows date format: "12/08/2025" or "08-Dec-2025"
+        windows_date_pattern = r"\d{2}[/\-]\d{2}[/\-]\d{4}"
+        if re.search(windows_date_pattern, response_str):
+            # Check it's in a command context (not just any date in HTML)
+            if "systeminfo" in response_str.lower() or "time" in response_str.lower():
+                return True, "Windows date/time command output"
+        
+        # IP address in response (ipconfig/ifconfig output)
+        ip_pattern = r"inet\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        if re.search(ip_pattern, response_str):
+            return True, "Network interface info (ifconfig/ip)"
         
         return False, None
 
     def send_payload(self, payload):
         """
         Sends payload to the target via TCP socket.
-        Returns dict: {"crash": bool, "data": bytes, "time_ms": float}
+        Returns dict: {"crash": bool, "data": bytes, "time_ms": float, "error_type": str}
+        
+        Real Attack Mode: Uses 10s timeout for complex payloads and
+        differentiates between firewall blocks vs actual crashes.
         """
-        result = {"crash": False, "data": None, "time_ms": 0.0}
+        result = {"crash": False, "data": None, "time_ms": 0.0, "error_type": None}
         
         if not self.target_ip or not self.target_port:
             return result
 
         start_time = time.time()
+        s = None
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(2.0) # 2 second timeout
+            s.settimeout(10.0)  # REAL ATTACK: 10 second timeout for complex payloads
             s.connect((self.target_ip, self.target_port))
             
             # If we have discovered paths, try to inject into HTTP request line
@@ -323,13 +390,47 @@ class Fuzzer:
                 result["crash"] = False # Timeout but alive (maybe)
                 
         except ConnectionRefusedError:
-            result["crash"] = True # CRASHED! Port closed
+            # REAL ATTACK: Connection refused could be firewall OR crash
+            # We mark it but verify_crash() will confirm
+            result["crash"] = True
+            result["error_type"] = "connection_refused"
+            logger.debug("Connection refused - possible crash or firewall")
+        except ConnectionResetError:
+            # Connection reset usually means server crashed mid-response
+            result["crash"] = True
+            result["error_type"] = "connection_reset"
+            logger.warning("Connection RESET - likely crash or WAF drop")
+        except socket.timeout:
+            # Connect timeout - server not responding (possible DoS)
+            result["crash"] = False
+            result["error_type"] = "timeout"
+            result["time_ms"] = 10000.0  # Mark as max timeout
+            logger.debug("Connection timeout - server may be overwhelmed")
+        except OSError as e:
+            # Network unreachable, host down, etc.
+            if "Network is unreachable" in str(e) or "No route to host" in str(e):
+                result["crash"] = False
+                result["error_type"] = "network_unreachable"
+                logger.warning(f"Network error (not a crash): {e}")
+            else:
+                result["crash"] = True
+                result["error_type"] = "os_error"
+                logger.debug(f"OS error (potential crash): {e}")
         except Exception as e:
             logger.debug(f"Socket error: {e}")
-            result["crash"] = True # Treat other errors as potential crashes
+            result["error_type"] = "unknown"
+            # Don't assume crash for unknown errors
+            result["crash"] = False
+        finally:
+            if s:
+                try:
+                    s.close()
+                except:
+                    pass
             
         end_time = time.time()
-        result["time_ms"] = (end_time - start_time) * 1000.0
+        if result["time_ms"] == 0.0:
+            result["time_ms"] = (end_time - start_time) * 1000.0
         return result
             
     def run_fuzzing_session(self, base_payload, iterations=100):

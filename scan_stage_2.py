@@ -22,6 +22,30 @@ db_manager = DatabaseManager()
 # Configure logging
 logger = setup_logger(__name__, "scan_log.json")
 
+# Global scan_id for logging (set when stage starts)
+_current_scan_id = None
+
+def scan_log(message: str, level: str = "info"):
+    """
+    Log a message to both file and MongoDB for real-time frontend display.
+    """
+    # Log to file
+    if level == "info":
+        logger.info(message)
+    elif level == "warning":
+        logger.warning(message)
+    elif level == "error":
+        logger.error(message)
+    else:
+        logger.debug(message)
+    
+    # Save to MongoDB for frontend streaming
+    if _current_scan_id:
+        try:
+            db_manager.save_scan_log(_current_scan_id, message, level)
+        except:
+            pass  # Don't fail scan if log saving fails
+
 def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, remote_port=None, scan_id=None, skip_other_files=False, demo_mode=False, model_id="hermes", auto_execute=False):
     """
     Stage 2: LLM Classification, Other Files Scan, Exploit Gen.
@@ -43,9 +67,13 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
     - This significantly reduces LLM inference time for MVP
     - Stage 1 findings already contain high-confidence vulnerabilities
     """
-    logger.info("="*50)
-    logger.info("STAGE 2: LLM ANALYSIS & EXPLOIT GEN (Process 2)")
-    logger.info("="*50)
+    # Set global scan_id for logging
+    global _current_scan_id
+    _current_scan_id = scan_id
+    
+    scan_log("=" * 50)
+    scan_log("STAGE 2: LLM ANALYSIS & EXPLOIT GENERATION")
+    scan_log("=" * 50)
 
     # Load findings from Stage 1
     all_findings = []

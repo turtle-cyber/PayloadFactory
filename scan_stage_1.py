@@ -20,6 +20,31 @@ db_manager = DatabaseManager()
 # Configure logging
 logger = setup_logger(__name__, "scan_log.json")
 
+# Global scan_id for logging (set when scan starts)
+_current_scan_id = None
+
+def scan_log(message: str, level: str = "info"):
+    """
+    Log a message to both file and MongoDB for real-time frontend display.
+    """
+    # Log to file
+    if level == "info":
+        logger.info(message)
+    elif level == "warning":
+        logger.warning(message)
+    elif level == "error":
+        logger.error(message)
+    else:
+        logger.debug(message)
+    
+    # Save to MongoDB for frontend streaming
+    if _current_scan_id:
+        try:
+            db_manager.save_scan_log(_current_scan_id, message, level)
+        except:
+            pass  # Don't fail scan if log saving fails
+
+
 def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, max_files=300):
     """
     Stage 1: Scan C/C++ files using specialized models.
@@ -38,10 +63,13 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
     - This ensures we still skip tests/headers, then prioritize what's left
     - Existing full-scan behavior is completely unchanged
     """
-    logger.info("="*50)
-    logger.info("="*50)
-    logger.info("STAGE 1: SPECIALIZED MODEL SCANNING (Process 1)")
-    logger.info("="*50)
+    # Set global scan_id for logging
+    global _current_scan_id
+    _current_scan_id = scan_id
+    
+    scan_log("=" * 50)
+    scan_log("STAGE 1: SPECIALIZED MODEL SCANNING (Process 1)")
+    scan_log("=" * 50)
 
     SUPPORTED_EXTENSIONS = {'.c', '.cpp', '.h', '.hpp', '.cc', '.java', '.jsp', '.php'}
     target_files = []
@@ -54,10 +82,10 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
                 target_files.append(os.path.join(root, file))
 
     if not target_files:
-        logger.info("No supported files (C/C++, Java, PHP) found. Skipping Stage 1.")
+        scan_log("No supported files (C/C++, Java, PHP) found. Skipping Stage 1.", "warning")
         return
 
-    logger.info(f"Found {len(target_files)} supported files.")
+    scan_log(f"Found {len(target_files)} supported files.")
     
     # FILTERING: Exclude test, legacy, and header files to reduce false positives
     filtered_files = []

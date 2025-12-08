@@ -166,11 +166,16 @@ const ReconPage = () => {
     setIsAnalyzing(true);
     try {
       // Create FormData for file upload
+      // Whitebox mode enables attack and auto-execution by default
       const uploadData = new FormData();
       uploadData.append("zipFile", selectedFile);
       uploadData.append("targetIp", targetIp);
-      uploadData.append("targetPort", ports.split(",")[0]);
+      uploadData.append("targetPort", ports.split(",")[0] || "8080");
       uploadData.append("applicationName", appName || "Whitebox Target");
+      // Enable attack mode and auto-execution by default for whitebox
+      uploadData.append("attackMode", "true");
+      uploadData.append("autoExec", "true");
+      uploadData.append("demoMode", "false");
 
       const response = await http.post("/recon/whitebox/upload", uploadData, {
         headers: {

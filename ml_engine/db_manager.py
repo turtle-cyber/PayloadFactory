@@ -323,6 +323,61 @@ class DatabaseManager:
             logger.error(f"Failed to fetch agent metrics: {e}")
             return []
 
+    # ========== SCAN LOGS ==========
+    def save_scan_log(self, scan_id: str, message: str, level: str = "info"):
+        """
+        Save a log entry for a specific scan.
+        This allows real-time log streaming to the frontend.
+        """
+        if not self.connected:
+            return None
+        
+        try:
+            collection = self.db['scan_logs']
+            log_doc = {
+                'scan_id': scan_id,
+                'message': message,
+                'level': level.lower(),
+                'timestamp': datetime.utcnow()
+            }
+            result = collection.insert_one(log_doc)
+            return str(result.inserted_id)
+        except Exception as e:
+            # Don't spam error logs for log failures
+            pass
+        return None
+
+    def get_scan_logs(self, scan_id: str, offset: int = 0, limit: int = 100):
+        """
+        Get logs for a specific scan with pagination.
+        Returns logs and total count.
+        """
+        if not self.connected:
+            return [], 0
+        
+        try:
+            collection = self.db['scan_logs']
+            
+            # Get total count
+            total = collection.count_documents({'scan_id': scan_id})
+            
+            # Get logs with pagination (sorted by timestamp ascending for chronological order)
+            logs = list(collection.find({'scan_id': scan_id})
+                       .sort('timestamp', 1)
+                       .skip(offset)
+                       .limit(limit))
+            
+            # Convert ObjectId to string for JSON serialization
+            for log in logs:
+                log['_id'] = str(log['_id'])
+                if 'timestamp' in log:
+                    log['timestamp'] = log['timestamp'].isoformat()
+            
+            return logs, total
+        except Exception as e:
+            logger.error(f"Failed to fetch scan logs: {e}")
+            return [], 0
+
     def clear_database(self):
         """Cleans all data from the database (scans, files, findings, logs)."""
         if not self.connected: return False

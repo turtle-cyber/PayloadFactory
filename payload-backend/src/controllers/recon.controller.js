@@ -264,7 +264,7 @@ class ReconController {
         });
       }
 
-      const { targetIp, targetPort, applicationName } = req.body;
+      const { targetIp, targetPort, applicationName, attackMode, autoExec, demoMode } = req.body;
 
       // Validate target IP
       if (!targetIp || !targetIp.trim()) {
@@ -281,6 +281,8 @@ class ReconController {
         size: req.file.size,
         targetIp,
         applicationName,
+        attackMode: attackMode === "true",
+        autoExec: autoExec === "true",
       });
 
       // Validate ZIP file
@@ -314,11 +316,15 @@ class ReconController {
       fs.unlinkSync(req.file.path);
 
       // Call Python backend to start whitebox scan
+      // Whitebox mode enables attack mode and auto-execution by default
       const whiteboxResult = await pythonBridge.whiteboxWorkflow({
         source_path: extractedPath,
         target_ip: targetIp.trim(),
-        target_port: targetPort || "80",
+        target_port: targetPort || "8080",
         application_name: applicationName || req.file.originalname.replace(".zip", ""),
+        attack_mode: attackMode === "true",
+        auto_execute: autoExec === "true",
+        demo_mode: demoMode === "true",
       });
 
       if (!whiteboxResult.success) {

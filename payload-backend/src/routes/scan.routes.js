@@ -78,4 +78,33 @@ router.get("/:id/status", scanController.getScanStatus.bind(scanController));
  */
 router.post("/:id/stop", scanController.stopScan.bind(scanController));
 
+/**
+ * @route   GET /api/scans/:id/logs
+ * @desc    Get scan logs for real-time display
+ * @access  Public
+ */
+router.get("/:id/logs", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { offset = 0, limit = 100 } = req.query;
+    
+    // Proxy to Python backend
+    const axios = (await import("axios")).default;
+    const pythonUrl = process.env.PYTHON_API_URL || "http://localhost:8000";
+    
+    const response = await axios.get(`${pythonUrl}/scan-logs/${id}`, {
+      params: { offset, limit }
+    });
+    
+    return res.status(200).json(response.data);
+  } catch (error) {
+    console.error("Error fetching scan logs:", error.message);
+    // Return empty logs on error instead of failing
+    return res.status(200).json({
+      success: true,
+      data: { logs: [], total: 0, offset: 0, limit: 100 }
+    });
+  }
+});
+
 export default router;

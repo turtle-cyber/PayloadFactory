@@ -155,8 +155,12 @@ class BlackboxAnalysisRequest(BaseModel):
 class WhiteboxWorkflowRequest(BaseModel):
     source_path: str
     target_ip: str
-    target_port: str = "80"
+    target_port: str = "8080"
     application_name: str = "Whitebox Target"
+    # Attack mode settings (enabled by default for whitebox)
+    attack_mode: bool = True
+    auto_execute: bool = True
+    demo_mode: bool = False
 
 @router.post("/recon")
 async def run_recon(request: ReconRequest):
@@ -309,8 +313,68 @@ async def stop_scan(scan_id: str):
         logger.error(f"Failed to stop scan: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/scan-logs/{scan_id}")
+async def get_scan_logs(scan_id: str, offset: int = 0, limit: int = 100):
+    """Get logs for a specific scan with pagination."""
+    try:
+        from ml_engine.db_manager import DatabaseManager
+        db = DatabaseManager()
+        logs, total = db.get_scan_logs(scan_id, offset=offset, limit=limit)
+        return {
+            "success": True,
+            "data": {
+                "logs": logs,
+                "total": total,
+                "offset": offset,
+                "limit": limit
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get scan logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- Network Recon Endpoints ---
+
+@router.post("/network/whitebox")
+async def whitebox_workflow(request: WhiteboxWorkflowRequest):
+    """
+    Initiate whitebox exploitation workflow with attack mode.
+    This starts a full scan with source code analysis, exploit generation,
+    and optional auto-execution against the target.
+    """
+    try:
+        if not os.path.isdir(request.source_path):
+            raise HTTPException(status_code=400, detail="Source code directory does not exist")
+        
+        orchestrator = get_orchestrator()
+        
+        logger.info(f"Starting whitebox workflow: {request.application_name}")
+        logger.info(f"  Target: {request.target_ip}:{request.target_port}")
+        logger.info(f"  Attack Mode: {request.attack_mode}, Auto-Execute: {request.auto_execute}")
+        
+        # Start scan with attack mode and auto-execution enabled
+        result = orchestrator.start_scan(
+            target_dir=request.source_path,
+            project_name=request.application_name,
+            quick_scan=False,  # Full analysis for whitebox
+            demo_mode=request.demo_mode,
+            remote_host=request.target_ip if request.attack_mode else None,
+            remote_port=int(request.target_port) if request.attack_mode else None,
+            model="hermes",
+            auto_execute=request.auto_execute
+        )
+        
+        return {
+            "success": True,
+            "scan_id": result.get("scan_id"),
+            "status": result.get("status", "pending"),
+            "message": f"Whitebox scan started with attack mode={'enabled' if request.attack_mode else 'disabled'}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start whitebox workflow: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/network/scan")
 async def scan_network_target(request: NetworkScanRequest):

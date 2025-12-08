@@ -13,9 +13,37 @@ from ml_engine.spider_module import WebSpider
 from ml_engine.logger_config import setup_logger
 from ml_engine.feedback_context import FeedbackContext
 from ml_engine.exploit_executor import ExploitExecutor, ExploitResult
+from ml_engine.db_manager import DatabaseManager
+
+# Initialize DB
+db_manager = DatabaseManager()
 
 # Configure logging
 logger = setup_logger(__name__, "scan_log.json")
+
+# Global scan_id for logging (set when stage starts)
+_current_scan_id = None
+
+def scan_log(message: str, level: str = "info"):
+    """
+    Log a message to both file and MongoDB for real-time frontend display.
+    """
+    # Log to file
+    if level == "info":
+        logger.info(message)
+    elif level == "warning":
+        logger.warning(message)
+    elif level == "error":
+        logger.error(message)
+    else:
+        logger.debug(message)
+    
+    # Save to MongoDB for frontend streaming
+    if _current_scan_id:
+        try:
+            db_manager.save_scan_log(_current_scan_id, message, level)
+        except:
+            pass  # Don't fail scan if log saving fails
 
 def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False):
     """
@@ -24,31 +52,35 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
     Args:
         auto_execute: If True, automatically execute exploits against the target after optimization
     """
-    logger.info("="*50)
-    logger.info("STAGE 3: FUZZING & RL OPTIMIZATION (Process 3)")
+    # Set global scan_id for logging
+    global _current_scan_id
+    _current_scan_id = scan_id
+    
+    scan_log("=" * 50)
+    scan_log("STAGE 3: FUZZING & RL OPTIMIZATION")
     if infinite:
-        logger.info("MODE: INFINITE FUZZING (Until Crash)")
+        scan_log("MODE: INFINITE FUZZING (Until Crash)")
     if threads > 1:
-        logger.info(f"MODE: PARALLEL FUZZING ({threads} threads)")
+        scan_log(f"MODE: PARALLEL FUZZING ({threads} threads)")
     if tomcat_direct:
-        logger.info("MODE: TOMCAT DIRECT ATTACK (CVE-based targeting)")
+        scan_log("MODE: TOMCAT DIRECT ATTACK (CVE-based targeting)")
     if auto_execute:
-        logger.info("MODE: AUTO-EXECUTE ENABLED (Exploits will be run against target)")
+        scan_log("MODE: AUTO-EXECUTE ENABLED (Exploits will be run against target)")
     
     if remote_host:
-        logger.info(f"ATTACK MODE ENABLED: Targeting {remote_host}:{remote_port}")
+        scan_log(f"ATTACK MODE: Targeting {remote_host}:{remote_port}")
     else:
-        logger.info("SIMULATION MODE: Fuzzing locally (no network traffic)")
-    logger.info("="*50)
+        scan_log("SIMULATION MODE: Fuzzing locally (no network traffic)")
+    scan_log("=" * 50)
 
     # Find generated exploits
     exploit_files = glob.glob(os.path.join(output_dir, "exploit_*.py"))
     
     if not exploit_files:
-        logger.info("No exploits found to optimize. Skipping Stage 3.")
+        scan_log("No exploits found to optimize. Skipping Stage 3.", "warning")
         return
 
-    logger.info(f"Found {len(exploit_files)} exploits to optimize.")
+    scan_log(f"Found {len(exploit_files)} exploits to optimize.")
     
     # Initialize Fuzzer with target if provided
     # Support both legacy Fuzzer and new BoofuzzEngine
