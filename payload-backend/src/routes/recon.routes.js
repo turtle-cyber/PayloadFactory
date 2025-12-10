@@ -59,6 +59,14 @@ router.post("/scan", reconController.scanNetwork.bind(reconController));
 router.post("/analyze", reconController.analyzeServices.bind(reconController));
 
 /**
+ * @route   POST /api/recon/simulation-setup
+ * @desc    Generate simulation/lab setup guide for a selected service
+ * @access  Public
+ * @body    { service, os_info? }
+ */
+router.post("/simulation-setup", reconController.simulationSetup.bind(reconController));
+
+/**
  * @route   POST /api/recon/blackbox
  * @desc    Run blackbox exploitation analysis (CVE matching, exploit lookup, fuzzing)
  * @access  Public

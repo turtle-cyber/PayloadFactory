@@ -345,7 +345,7 @@ const FindingPage = () => {
                           {finding.cwe}
                         </td>
                         <td className="p-4 text-sm text-gray-300">
-                          {finding.cve}
+                          {finding.cve === "Unknown" ? "Unclassified" : finding.cve}
                         </td>
                         <td className="p-4 text-sm text-gray-300">
                           {finding.file}

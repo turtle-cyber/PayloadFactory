@@ -220,7 +220,8 @@ class ScanOrchestrator:
                 sys.executable,
                 os.path.join(self.project_root, "scan_stage_3.py"),
                 output_dir,
-                "--scan-id", scan_id
+                "--scan-id", scan_id,
+                "--smart-fuzz"  # Enable Smart Hybrid Fuzzer (3-Layer)
             ]
             if config["remote_host"]:
                 stage3_cmd.extend(["--remote-host", config["remote_host"]])

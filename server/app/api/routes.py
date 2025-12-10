@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 import sys
 import os
@@ -393,12 +393,12 @@ async def scan_network_target(request: NetworkScanRequest):
         
         logger.info(f"Port scan mode: {'auto-detect (quick)' if port_list is None else f'{len(port_list)} ports'}")
 
-        # Scan target
-        services = scanner.scan_target(request.target_ip, ports=port_list)
+        # Scan target - returns ScanResult with services and os_info
+        scan_result = scanner.scan_target(request.target_ip, ports=port_list)
 
         # Convert ServiceInfo to dict
         service_dicts = []
-        for svc in services:
+        for svc in scan_result.services:
             service_dicts.append({
                 "port": svc.port,
                 "state": "open",
@@ -408,8 +408,18 @@ async def scan_network_target(request: NetworkScanRequest):
                 "banner": svc.banner
             })
 
+        # Convert OSInfo to dict
+        os_info_dict = {
+            "name": scan_result.os_info.name,
+            "accuracy": scan_result.os_info.accuracy,
+            "family": scan_result.os_info.family,
+            "vendor": scan_result.os_info.vendor,
+            "os_gen": scan_result.os_info.os_gen
+        }
+
         return {
             "services": service_dicts,
+            "os_info": os_info_dict,
             "scan_time": datetime.now().isoformat()
         }
     except Exception as e:
@@ -449,6 +459,38 @@ async def analyze_services(request: ServiceAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class SimulationSetupRequest(BaseModel):
+    service: Dict[str, Any]  # Service info (port, service, product, version, banner)
+    os_info: Optional[Dict[str, Any]] = None  # OS detection info (name, family, vendor)
+
+
+@router.post("/recon/simulation-setup")
+async def generate_simulation_setup(request: SimulationSetupRequest):
+    """Generate simulation/lab setup guide for a discovered service."""
+    try:
+        analyzer = get_service_analyzer()
+        
+        logger.info(f"Generating simulation setup for port {request.service.get('port')}")
+        
+        # Generate setup guide
+        setup_data = analyzer.generate_simulation_setup(
+            service_info=request.service,
+            os_info=request.os_info
+        )
+        
+        # Format for display
+        formatted_guide = analyzer.format_simulation_setup(setup_data)
+        
+        return {
+            "success": True,
+            "setup_data": setup_data,
+            "formatted_guide": formatted_guide
+        }
+    except Exception as e:
+        logger.error(f"Simulation setup generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/network/blackbox")
 async def blackbox_analysis(request: BlackboxAnalysisRequest):
     """Run blackbox exploitation analysis."""
@@ -469,7 +511,7 @@ async def blackbox_analysis(request: BlackboxAnalysisRequest):
                     port_list = [int(p.strip()) for p in request.ports.split(",") if p.strip()]
 
             scanned = scanner.scan_target(request.target_ip, ports=port_list)
-            services = [{"port": s.port, "service": s.service, "product": s.product, "version": s.version} for s in scanned]
+            services = [{"port": s.port, "service": s.service, "product": s.product, "version": s.version} for s in scanned.services]
 
         # Analyze each service
         results = []
@@ -495,32 +537,38 @@ async def blackbox_analysis(request: BlackboxAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/network/whitebox")
-async def whitebox_workflow(request: WhiteboxWorkflowRequest):
-    """Initiate whitebox exploitation workflow."""
+
+
+# ========== DATABASE MANAGEMENT ==========
+
+@router.delete("/database/clear")
+async def clear_database():
+    """
+    Clear all data from the database (scans, findings, exploits, logs).
+    WARNING: This action is irreversible.
+    """
     try:
-        if not os.path.isdir(request.source_path):
-            raise HTTPException(status_code=400, detail="Source path does not exist")
-
-        # Trigger full scan with attack mode enabled
-        orchestrator = get_orchestrator()
-        result = orchestrator.start_scan(
-            target_dir=request.source_path,
-            project_name=request.application_name,
-            quick_scan=False,
-            demo_mode=False,
-            remote_host=request.target_ip,
-            remote_port=int(request.target_port),
-            model="hermes"
-        )
-
-        return {
-            "scan_id": result.get("scan_id"),
-            "status": result.get("status", "pending")
-        }
+        from ml_engine.db_manager import DatabaseManager
+        
+        db = DatabaseManager()
+        
+        if not db.connected:
+            raise HTTPException(status_code=500, detail="Database not connected")
+        
+        success = db.clear_database()
+        
+        if success:
+            logger.info("Database cleared successfully via API")
+            return {
+                "success": True,
+                "message": "All scans, findings, and logs have been deleted."
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to clear database")
+            
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Whitebox workflow failed: {e}")
+        logger.error(f"Error clearing database: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -45,12 +45,13 @@ def scan_log(message: str, level: str = "info"):
         except:
             pass  # Don't fail scan if log saving fails
 
-def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False):
+def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False, smart_fuzz=True):
     """
     Stage 3: Fuzzing and RL Optimization of generated exploits.
     
     Args:
         auto_execute: If True, automatically execute exploits against the target after optimization
+        smart_fuzz: If True, use SmartHybridFuzzer (3-layer fuzzing with LLM)
     """
     # Set global scan_id for logging
     global _current_scan_id
@@ -66,6 +67,8 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
         scan_log("MODE: TOMCAT DIRECT ATTACK (CVE-based targeting)")
     if auto_execute:
         scan_log("MODE: AUTO-EXECUTE ENABLED (Exploits will be run against target)")
+    if smart_fuzz:
+        scan_log("MODE: SMART HYBRID FUZZER (3-Layer: Random + Boofuzz + LLM)")
     
     if remote_host:
         scan_log(f"ATTACK MODE: Targeting {remote_host}:{remote_port}")
@@ -82,9 +85,13 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
 
     scan_log(f"Found {len(exploit_files)} exploits to optimize.")
     
-    # Initialize Fuzzer with target if provided
-    # Support both legacy Fuzzer and new BoofuzzEngine
-    if use_boofuzz and remote_host:
+    # Initialize Fuzzer - Choose strategy based on flags
+    # Priority: smart_fuzz > use_boofuzz > legacy
+    if smart_fuzz and remote_host:
+        from ml_engine.smart_fuzzer import SmartHybridFuzzer
+        fuzzer = SmartHybridFuzzer(target_ip=remote_host, target_port=remote_port)
+        scan_log("Using SMART HYBRID FUZZER (Layer 1: Random, Layer 2: Boofuzz, Layer 3: LLM)")
+    elif use_boofuzz and remote_host:
         from ml_engine.boofuzz_engine import BoofuzzEngine
         fuzzer = BoofuzzEngine(target_ip=remote_host, target_port=remote_port)
         logger.info("Using BOOFUZZ engine for advanced fuzzing")
@@ -153,7 +160,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
 
     for exploit_file in exploit_files:
         file_name = os.path.basename(exploit_file)
-        logger.info(f"Optimizing {file_name}...")
+        scan_log(f"Optimizing {file_name}...")
         
         try:
             # Read the exploit code
@@ -204,7 +211,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                                 finding_types.add("Crash/Error")
                         
                         types_str = ", ".join(finding_types)
-                        logger.info(f"  -> Fuzzer found {len(crashes)} findings! ({types_str})")
+                        scan_log(f"  -> Fuzzer found {len(crashes)} findings! ({types_str})")
                         break # Success!
                     
                     # If no crashes and we have retries left, REGENERATE
@@ -367,7 +374,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                             f.writelines(new_lines)
                         logger.info("  -> Created new 'payloads' list with optimized payload.")
 
-                logger.info(f"  -> Optimization complete for {file_name}")
+                scan_log(f"  -> Optimization complete for {file_name}")
                 
                 # --- EXPLOIT EXECUTION PHASE ---
                 if exploit_executor and remote_host:
@@ -409,7 +416,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
         except Exception as e:
             logger.error(f"Error optimizing {file_name}: {e}")
 
-    logger.info("Stage 3 Complete.")
+    scan_log("Stage 3 Complete.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -422,7 +429,12 @@ if __name__ == "__main__":
     parser.add_argument("--use-boofuzz", action="store_true", help="Use Boofuzz advanced fuzzer (CVE payloads for Tomcat v8-v11)")
     parser.add_argument("--tomcat-direct", action="store_true", help="Use Tomcat-specific attack targeting (port scan, brute-force, CVE chains)")
     parser.add_argument("--auto-execute", action="store_true", help="Automatically execute exploits against target after optimization")
+    parser.add_argument("--smart-fuzz", action="store_true", default=True, help="Use Smart Hybrid Fuzzer (3-Layer: Random + Boofuzz + LLM)")
+    parser.add_argument("--no-smart-fuzz", action="store_true", help="Disable Smart Hybrid Fuzzer, use legacy fuzzer")
     args = parser.parse_args()
     
-    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct, auto_execute=args.auto_execute)
+    # Handle --no-smart-fuzz flag
+    smart_fuzz = args.smart_fuzz and not args.no_smart_fuzz
+    
+    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct, auto_execute=args.auto_execute, smart_fuzz=smart_fuzz)
 

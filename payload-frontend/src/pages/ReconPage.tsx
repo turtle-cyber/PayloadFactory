@@ -1,64 +1,251 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, useEffect, useRef } from "react";
 import ExploitGenerationCard from "@/components/ExploitGenerationCard";
 import FingerprintTable from "@/components/FingerprintTable";
 import GuideCard from "@/components/GuideCard";
 import ReconTargetCard from "@/components/ReconTargetCard";
+import ScanLogCard from "@/components/ScanLogCard";
 import { http } from "@/utils/http";
 import { toast } from "@/utils/toast";
 
+interface OSInfo {
+  name: string;
+  accuracy: number;
+  family: string;
+  vendor: string;
+  os_gen: string;
+}
+
+interface ScanProgress {
+  scan_id: string;
+  status: string;
+  progress?: {
+    current_stage?: number;
+    files_scanned?: number;
+    total_files?: number;
+    vulnerabilities_found?: number;
+    exploits_generated?: number;
+    current_file?: string | null;
+  };
+  project_name?: string;
+  started_at?: string;
+}
+
+// Helper functions for progress display
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "completed": return "text-green-500";
+    case "failed": return "text-red-500";
+    case "cancelled": return "text-yellow-500";
+    case "stage-1":
+    case "stage-2":
+    case "stage-3": return "text-blue-500";
+    default: return "text-gray-500";
+  }
+};
+
+const getStageLabel = (status: string) => {
+  switch (status) {
+    case "pending": return "Initializing...";
+    case "stage-1": return "Stage 1: Scanning";
+    case "stage-2": return "Stage 2: Generating Exploits";
+    case "stage-3": return "Stage 3: Fuzzing & Optimization";
+    case "completed": return "Completed";
+    case "failed": return "Failed";
+    case "cancelled": return "Cancelled";
+    default: return status;
+  }
+};
+
+// localStorage persistence for scan state
+const RECON_STORAGE_KEY = "recon_current_scan";
+
+interface StoredReconScan {
+  scan_id: string;
+  project_name: string;
+  status: string;
+  started_at: string;
+  last_updated: string;
+  target_ip?: string;
+}
+
+const saveReconScanToStorage = (scan: ScanProgress, targetIp?: string) => {
+  try {
+    localStorage.setItem(
+      RECON_STORAGE_KEY,
+      JSON.stringify({
+        scan_id: scan.scan_id,
+        project_name: scan.project_name || "Recon Target",
+        status: scan.status,
+        started_at: scan.started_at || new Date().toISOString(),
+        last_updated: new Date().toISOString(),
+        target_ip: targetIp,
+      })
+    );
+  } catch (error) {
+    console.error("Failed to save recon scan to localStorage:", error);
+  }
+};
+
+const loadReconScanFromStorage = (): StoredReconScan | null => {
+  try {
+    const stored = localStorage.getItem(RECON_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.error("Failed to load recon scan from localStorage:", error);
+    return null;
+  }
+};
+
+const clearReconScanFromStorage = () => {
+  try {
+    localStorage.removeItem(RECON_STORAGE_KEY);
+  } catch (error) {
+    console.error("Failed to clear recon scan from localStorage:", error);
+  }
+};
+
 const ReconPage = () => {
-  const navigate = useNavigate();
 
   // State management
   const [targetIp, setTargetIp] = useState("");
-  const [ports, setPorts] = useState("");
   const [appName, setAppName] = useState("");
   const [services, setServices] = useState<any[]>([]);
+  const [osInfo, setOsInfo] = useState<OSInfo | null>(null);
   const [analysis, setAnalysis] = useState("");
   const [mode, setMode] = useState<"whitebox" | "blackbox">("whitebox");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedServiceIndex, setSelectedServiceIndex] = useState<number | null>(null);
-  const [serviceAnalyses, setServiceAnalyses] = useState<any[]>([]);
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [acknowledgmentChecked, setAcknowledgmentChecked] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState<{ current: number; total: number } | null>(null);
+  const [currentScanId, setCurrentScanId] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Service selection handler
-  const handleServiceSelect = (index: number) => {
-    console.log("=== Service Selection Debug ===");
-    console.log("Selected index:", index);
-    console.log("Total service analyses:", serviceAnalyses.length);
-    console.log("Service analyses array:", serviceAnalyses);
-    console.log("Analysis at selected index:", serviceAnalyses[index]);
-
-    setSelectedServiceIndex(index);
-    if (serviceAnalyses[index]) {
-      const analysisData = serviceAnalyses[index];
-
-      // Try different possible fields for the LLM analysis
-      let exploitSteps = "";
-
-      if (typeof analysisData.exploitation_steps === 'string') {
-        exploitSteps = analysisData.exploitation_steps;
-      } else if (Array.isArray(analysisData.exploitation_steps)) {
-        exploitSteps = analysisData.exploitation_steps.join('\n');
-      } else if (analysisData.llm_analysis) {
-        exploitSteps = analysisData.llm_analysis;
-      } else if (analysisData.analysis) {
-        exploitSteps = analysisData.analysis;
-      } else if (analysisData.raw_output) {
-        exploitSteps = analysisData.raw_output;
-      } else {
-        // Fallback: show the entire object
-        exploitSteps = JSON.stringify(analysisData, null, 2);
-      }
-
-      console.log("Exploit steps to display:", exploitSteps);
-      setAnalysis(exploitSteps);
-    } else {
-      console.log("No analysis found at this index");
+  // Polling functions
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
+  }, []);
+
+  const startPolling = useCallback((scanId: string) => {
+    stopPolling();
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await http.get(`/scans/${scanId}/status`);
+        if (response.data.success) {
+          const scanData = response.data.data;
+          setScanProgress(scanData);
+          
+          // Save to localStorage for persistence
+          saveReconScanToStorage(scanData, undefined);
+
+          // Stop polling if scan finished
+          if (["completed", "failed", "cancelled"].includes(scanData.status)) {
+            stopPolling();
+            setIsAnalyzing(false);
+            // Clear from storage or keep for display - we keep it for display but mark as finished
+            saveReconScanToStorage(scanData, undefined);
+            if (scanData.status === "completed") {
+              toast.success("Attack completed", "View results in the Findings page");
+            } else if (scanData.status === "failed") {
+              toast.error("Attack failed", "Check logs for details");
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+      }
+    }, 2000);
+  }, [stopPolling]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  // Load saved scan on mount and resume polling if in-progress
+  useEffect(() => {
+    const storedScan = loadReconScanFromStorage();
+    if (storedScan) {
+      console.log("[ReconPage] Found stored scan:", storedScan.scan_id, storedScan.status);
+      
+      // Set the currentScanId for logs
+      setCurrentScanId(storedScan.scan_id);
+      
+      // If scan was in-progress, resume polling
+      const inProgressStatuses = ["pending", "stage-1", "stage-2", "stage-3"];
+      if (inProgressStatuses.includes(storedScan.status)) {
+        console.log("[ReconPage] Resuming polling for in-progress scan");
+        setIsAnalyzing(true);
+        setScanProgress({
+          scan_id: storedScan.scan_id,
+          status: storedScan.status,
+          project_name: storedScan.project_name,
+          started_at: storedScan.started_at,
+        });
+        startPolling(storedScan.scan_id);
+      } else {
+        // Scan finished, show last result but don't poll
+        setScanProgress({
+          scan_id: storedScan.scan_id,
+          status: storedScan.status,
+          project_name: storedScan.project_name,
+          started_at: storedScan.started_at,
+        });
+      }
+      
+      // Restore target IP if saved
+      if (storedScan.target_ip) {
+        setTargetIp(storedScan.target_ip);
+      }
+    }
+  }, [startPolling]);
+
+  // Toggle service selection and generate simulation setup
+  const handleServiceToggle = async (index: number) => {
+    // Update selection state
+    setSelectedIndices(prev => {
+      if (prev.includes(index)) {
+        return prev.filter(i => i !== index);
+      } else {
+        return [...prev, index];
+      }
+    });
+
+    // Get selected service
+    const selectedService = services[index];
+    if (!selectedService) return;
+
+    // Generate simulation setup guide for selected service
+    setAnalysis("🔄 Generating simulation setup guide...");
+    
+    try {
+      const response = await http.post("/recon/simulation-setup", {
+        service: selectedService,
+        os_info: osInfo,
+      });
+
+      if (response.data.success) {
+        // Display the formatted guide
+        setAnalysis(response.data.data.formatted_guide);
+        toast.success(
+          "Setup Guide Ready",
+          `Generated lab setup for ${selectedService.product || selectedService.service}`
+        );
+      } else {
+        setAnalysis("Failed to generate setup guide. Please try again.");
+      }
+    } catch (error: any) {
+      console.error("Simulation setup error:", error);
+      setAnalysis(`Error: ${error.response?.data?.message || error.message}\n\nPlease ensure the Python backend is running.`);
+    } finally {
+      // Loading complete
+    }
+
     setAcknowledgmentChecked(false);
   };
 
@@ -67,7 +254,7 @@ const ReconPage = () => {
     setAcknowledgmentChecked(checked);
   };
 
-  // Scan handler
+  // Scan handler - no more auto-analyze, setup generated on port selection
   const handleScan = async () => {
     if (!targetIp.trim()) {
       toast.error("Target IP required", "Please enter a target IP address");
@@ -75,36 +262,32 @@ const ReconPage = () => {
     }
 
     setIsScanning(true);
+    setOsInfo(null);
+    setSelectedIndices([]);
+    setAnalysis("");
+    
     try {
       const response = await http.post("/recon/scan", {
         target_ip: targetIp,
-        ports: ports,
         application_name: appName || "Unknown Target",
       });
 
       if (response.data.success) {
         setServices(response.data.data.services);
+        
+        // Set OS info if available
+        if (response.data.data.os_info) {
+          setOsInfo(response.data.data.os_info);
+        }
+        
         toast.success(
           "Scan complete",
-          `Found ${response.data.data.services.length} services`
+          `Found ${response.data.data.services.length} services. Click on a port to generate setup guide.`
         );
 
-        // Auto-analyze
+        // Show hint to user
         if (response.data.data.services.length > 0) {
-          const analysisResponse = await http.post("/recon/analyze", {
-            services: response.data.data.services,
-            model: "hermes",
-          });
-
-          if (analysisResponse.data.success) {
-            console.log("=== Auto-Analyze Debug ===");
-            console.log("Analysis response:", analysisResponse.data.data.analysis);
-            console.log("Number of analyses:", analysisResponse.data.data.analysis.length);
-            setServiceAnalyses(analysisResponse.data.data.analysis);
-            setAnalysis("");
-            setSelectedServiceIndex(null);
-            setAcknowledgmentChecked(false);
-          }
+          setAnalysis("👆 Click on a discovered service/port above to generate a simulation setup guide.");
         }
       }
     } catch (error: any) {
@@ -125,7 +308,6 @@ const ReconPage = () => {
     try {
       const response = await http.post("/recon/blackbox", {
         target_ip: targetIp,
-        ports: ports,
         services: services,
       });
 
@@ -151,7 +333,36 @@ const ReconPage = () => {
     }
   };
 
-  // Whitebox handler
+  // Poll for scan completion
+  const pollScanCompletion = useCallback(async (scanId: string): Promise<boolean> => {
+    const maxAttempts = 600; // 10 minutes max (every 1 second)
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await http.get(`/scan/status/${scanId}`);
+        const status = response.data.data?.status || response.data.status;
+
+        if (status === "completed") {
+          return true;
+        } else if (status === "failed" || status === "cancelled") {
+          return false;
+        }
+
+        // Wait 1 second before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      } catch (error) {
+        console.error("Polling error:", error);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+      }
+    }
+
+    return false; // Timeout
+  }, []);
+
+  // Whitebox handler with sequential port processing
   const handleWhitebox = async () => {
     if (!selectedFile) {
       toast.error("ZIP file required", "Please select a source code ZIP file");
@@ -163,30 +374,88 @@ const ReconPage = () => {
       return;
     }
 
+    // Get selected ports or default to first port/8080
+    const portsToProcess = selectedIndices.length > 0
+      ? selectedIndices.map(i => services[i]?.port).filter(Boolean)
+      : services.length > 0
+        ? [services[0].port]
+        : [8080];
+
+    if (portsToProcess.length === 0) {
+      toast.error("No ports selected", "Please select at least one port to attack");
+      return;
+    }
+
+    // IMPORTANT: Clear old scan data before starting a new scan
+    // This prevents old findings from persisting in the UI
+    clearReconScanFromStorage();
+    setCurrentScanId(null);
+    setScanProgress(null);
+    stopPolling();
+
     setIsAnalyzing(true);
+    const totalPorts = portsToProcess.length;
+
     try {
-      // Create FormData for file upload
-      // Whitebox mode enables attack and auto-execution by default
-      const uploadData = new FormData();
-      uploadData.append("zipFile", selectedFile);
-      uploadData.append("targetIp", targetIp);
-      uploadData.append("targetPort", ports.split(",")[0] || "8080");
-      uploadData.append("applicationName", appName || "Whitebox Target");
-      // Enable attack mode and auto-execution by default for whitebox
-      uploadData.append("attackMode", "true");
-      uploadData.append("autoExec", "true");
-      uploadData.append("demoMode", "false");
+      // Process each port sequentially
+      for (let i = 0; i < totalPorts; i++) {
+        const port = portsToProcess[i];
+        setProcessingProgress({ current: i + 1, total: totalPorts });
 
-      const response = await http.post("/recon/whitebox/upload", uploadData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
+        toast.info(
+          `Processing port ${i + 1} of ${totalPorts}`,
+          `Starting full scan cycle for port ${port}...`
+        );
 
-      if (response.data.success) {
-        toast.success("Whitebox scan initiated", "Navigating to scan page...");
-        // Navigate to scan page
-        navigate("/scan", { state: { scanId: response.data.data.scan_id } });
+        // Create FormData for file upload
+        const uploadData = new FormData();
+        uploadData.append("zipFile", selectedFile);
+        uploadData.append("targetIp", targetIp);
+        uploadData.append("targetPort", String(port));
+        uploadData.append("applicationName", appName || "Whitebox Target");
+        uploadData.append("attackMode", "true");
+        uploadData.append("autoExec", "true");
+        uploadData.append("demoMode", "false");
+
+        const response = await http.post("/recon/whitebox/upload", uploadData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+
+        if (!response.data.success) {
+          toast.error(`Port ${port} failed`, "Continuing to next port...");
+          continue;
+        }
+
+        const scanId = response.data.data.scan_id;
+        setCurrentScanId(scanId); // Track current scan for logs
+        const initialProgress: ScanProgress = { scan_id: scanId, status: "pending", project_name: appName || "Whitebox Target" };
+        setScanProgress(initialProgress);
+        saveReconScanToStorage(initialProgress, targetIp); // Save to localStorage
+        startPolling(scanId); // Start polling for progress updates
+        toast.success(`Port ${port} scan started`, `Scan ID: ${scanId}`);
+
+        // For last port, just show completion message (stay on ReconPage with progress box)
+        if (i === totalPorts - 1) {
+          toast.success(
+            "All ports submitted",
+            `Monitoring scan progress for port ${port}...`
+          );
+          // Stay on ReconPage - progress box will show status via polling
+          // User can navigate to Results page when done
+          return;
+        }
+
+        // Wait for scan to complete before proceeding to next port
+        toast.info(`Waiting for port ${port} scan to complete...`);
+        const completed = await pollScanCompletion(scanId);
+
+        if (completed) {
+          toast.success(`Port ${port} scan completed`, `Moving to next port...`);
+        } else {
+          toast.warning(`Port ${port} scan may have issues`, `Continuing to next port...`);
+        }
       }
     } catch (error: any) {
       toast.error(
@@ -195,6 +464,7 @@ const ReconPage = () => {
       );
     } finally {
       setIsAnalyzing(false);
+      setProcessingProgress(null);
     }
   };
 
@@ -206,8 +476,6 @@ const ReconPage = () => {
             <ReconTargetCard
               targetIp={targetIp}
               setTargetIp={setTargetIp}
-              ports={ports}
-              setPorts={setPorts}
               appName={appName}
               setAppName={setAppName}
               onScan={handleScan}
@@ -215,16 +483,145 @@ const ReconPage = () => {
             />
           </div>
 
-          {/*Fingerprints Table */}
+          {/* Fingerprints Table with OS Info */}
           <div>
             <FingerprintTable
               services={services}
-              selectedServiceIndex={selectedServiceIndex}
-              onServiceSelect={handleServiceSelect}
+              osInfo={osInfo}
+              selectedIndices={selectedIndices}
+              onServiceToggle={handleServiceToggle}
             />
           </div>
 
-          {/*Guide Card */}
+          {/* Scan Progress Box - Detailed */}
+          {(scanProgress || processingProgress) && (
+            <div className="glassmorphism-card rounded-xl p-6 border border-blue-500/30 bg-blue-500/5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  {!["completed", "failed", "cancelled"].includes(scanProgress?.status || "") && (
+                    <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full" />
+                  )}
+                  <h2 className="text-lg font-semibold text-white">
+                    {scanProgress ? "Attack Progress" : "Processing Ports"}
+                  </h2>
+                </div>
+                <div className="flex items-center space-x-3">
+                  {scanProgress && (
+                    <span className={`text-sm font-medium ${getStatusColor(scanProgress.status)}`}>
+                      {getStageLabel(scanProgress.status)}
+                    </span>
+                  )}
+                  {/* Always show New Scan button to clear old data */}
+                  <button
+                    onClick={() => {
+                      // Clear all scan-related state
+                      setScanProgress(null);
+                      setCurrentScanId(null);
+                      clearReconScanFromStorage();
+                      stopPolling();
+                      
+                      // Also reset form state for a completely fresh start
+                      setServices([]);
+                      setOsInfo(null);
+                      setSelectedIndices([]);
+                      setAnalysis("");
+                      setSelectedFile(null);
+                      setAcknowledgmentChecked(false);
+                      setProcessingProgress(null);
+                      setIsAnalyzing(false);
+                      
+                      toast.success("Ready for New Scan", "All old data cleared. Enter a new target to begin.");
+                    }}
+                    className="px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-xs rounded transition-colors font-medium"
+                    title="Clear all old data and start completely fresh"
+                  >
+                    🔄 New Scan
+                  </button>
+                </div>
+              </div>
+
+              {/* Port processing progress */}
+              {processingProgress && (
+                <div className="mb-4 p-3 bg-black/30 rounded-lg">
+                  <p className="text-blue-400 font-medium">
+                    Processing port {processingProgress.current} of {processingProgress.total}
+                  </p>
+                </div>
+              )}
+
+              {/* Detailed scan progress */}
+              {scanProgress && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-black/30 rounded-lg p-3">
+                      <p className="text-gray-400 text-sm mb-1">Scan ID</p>
+                      <p className="text-white font-mono text-sm truncate">{scanProgress.scan_id}</p>
+                    </div>
+                    <div className="bg-black/30 rounded-lg p-3">
+                      <p className="text-gray-400 text-sm mb-1">Target</p>
+                      <p className="text-white text-sm">{targetIp}</p>
+                    </div>
+                  </div>
+
+                  {scanProgress.progress && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-black/30 rounded-lg p-3">
+                        <p className="text-gray-400 text-sm mb-1">Files Scanned</p>
+                        <p className="text-white text-xl font-semibold">
+                          {scanProgress.progress.files_scanned || 0}
+                        </p>
+                      </div>
+                      <div className="bg-black/30 rounded-lg p-3">
+                        <p className="text-gray-400 text-sm mb-1">Vulnerabilities</p>
+                        <p className="text-red-400 text-xl font-semibold">
+                          {scanProgress.progress.vulnerabilities_found || 0}
+                        </p>
+                      </div>
+                      <div className="bg-black/30 rounded-lg p-3">
+                        <p className="text-gray-400 text-sm mb-1">Exploits</p>
+                        <p className="text-yellow-400 text-xl font-semibold">
+                          {scanProgress.progress.exploits_generated || 0}
+                        </p>
+                      </div>
+                      <div className="bg-black/30 rounded-lg p-3">
+                        <p className="text-gray-400 text-sm mb-1">Stage</p>
+                        <p className="text-blue-400 text-xl font-semibold">
+                          {scanProgress.progress.current_stage || 0}/3
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {scanProgress.progress?.current_file && (
+                    <div className="bg-black/30 rounded-lg p-3">
+                      <p className="text-gray-400 text-sm mb-1">Current File</p>
+                      <p className="text-white text-sm font-mono truncate">
+                        {scanProgress.progress.current_file}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Dismiss button for completed/failed scans */}
+                  {["completed", "failed", "cancelled"].includes(scanProgress.status) && (
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={() => {
+                          setScanProgress(null);
+                          setCurrentScanId(null);
+                          clearReconScanFromStorage();
+                        }}
+                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Guide Card */}
           <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
             <GuideCard
               analysis={analysis}
@@ -233,7 +630,7 @@ const ReconPage = () => {
             />
           </div>
 
-          {/*Exploit Generation Window */}
+          {/* Exploit Generation Window */}
           <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
             <ExploitGenerationCard
               mode={mode}
@@ -243,6 +640,14 @@ const ReconPage = () => {
               onGenerate={mode === "whitebox" ? handleWhitebox : handleBlackbox}
               isGenerating={isAnalyzing}
               disabled={!acknowledgmentChecked}
+            />
+          </div>
+
+          {/* Scan Logs */}
+          <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
+            <ScanLogCard
+              scanId={currentScanId}
+              isScanning={isAnalyzing}
             />
           </div>
         </div>

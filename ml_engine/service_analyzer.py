@@ -647,6 +647,182 @@ Output ONLY the JSON object, no explanations."""
                 tools_needed=tools_needed
             )
     
+    def generate_simulation_setup(self, service_info: Dict[str, Any], os_info: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Generate a simulation/lab setup guide for testing vulnerabilities on a service.
+        
+        Args:
+            service_info: Dict with service details (port, service, product, version, banner)
+            os_info: Optional OS detection info (name, family, vendor)
+            
+        Returns:
+            Dict containing setup instructions, docker commands, VM configs, etc.
+        """
+        product = service_info.get("product", service_info.get("service", "Unknown"))
+        version = service_info.get("version", "latest")
+        port = service_info.get("port", 80)
+        
+        # Normalize service name
+        product_lower = product.lower() if product else ""
+        
+        # Common setup templates for popular services
+        SETUP_TEMPLATES = {
+            "apache tomcat": {
+                "docker_image": f"tomcat:{version if version != 'unknown' else 'latest'}",
+                "docker_run": f"docker run -d -p {port}:8080 --name tomcat-lab tomcat:{version if version != 'unknown' else 'latest'}",
+                "vulnerable_versions": ["8.5.0-8.5.78", "9.0.0-9.0.62", "10.0.0-10.0.20"],
+                "install_commands": [
+                    "apt-get update && apt-get install -y openjdk-11-jdk",
+                    f"wget https://archive.apache.org/dist/tomcat/tomcat-9/v{version}/bin/apache-tomcat-{version}.tar.gz" if version != 'unknown' else "# Download specific version from Apache archives",
+                    "tar -xzf apache-tomcat-*.tar.gz -C /opt/",
+                    "chmod +x /opt/apache-tomcat-*/bin/*.sh"
+                ],
+                "config_files": ["/opt/tomcat/conf/server.xml", "/opt/tomcat/conf/tomcat-users.xml"],
+                "default_creds": ["tomcat:tomcat", "admin:admin", "manager:manager"],
+                "test_paths": ["/manager/html", "/host-manager/html", "/manager/status"],
+                "notes": "For CVE testing, use vulnerable Docker images from vulhub/tomcat or specific version archives."
+            },
+            "nginx": {
+                "docker_image": f"nginx:{version if version != 'unknown' else 'latest'}",
+                "docker_run": f"docker run -d -p {port}:80 --name nginx-lab nginx:{version if version != 'unknown' else 'latest'}",
+                "vulnerable_versions": ["1.16.0-1.16.1", "1.17.0-1.17.6"],
+                "install_commands": [
+                    "apt-get update && apt-get install -y nginx",
+                    "systemctl start nginx"
+                ],
+                "config_files": ["/etc/nginx/nginx.conf", "/etc/nginx/sites-enabled/default"],
+                "test_paths": ["/", "/.git/", "/server-status"],
+                "notes": "Configure with misconfigurations for testing: alias traversal, open redirects, etc."
+            },
+            "apache": {
+                "docker_image": f"httpd:{version if version != 'unknown' else 'latest'}",
+                "docker_run": f"docker run -d -p {port}:80 --name apache-lab httpd:{version if version != 'unknown' else 'latest'}",
+                "vulnerable_versions": ["2.4.49", "2.4.50"],
+                "install_commands": [
+                    "apt-get update && apt-get install -y apache2",
+                    "a2enmod cgi",
+                    "systemctl start apache2"
+                ],
+                "config_files": ["/etc/apache2/apache2.conf", "/etc/apache2/sites-enabled/000-default.conf"],
+                "test_paths": ["/cgi-bin/", "/server-status", "/icons/"],
+                "notes": "For CVE-2021-41773/42013 testing, use specific vulnerable version with mod_cgi enabled."
+            },
+            "openssh": {
+                "docker_image": "linuxserver/openssh-server",
+                "docker_run": f"docker run -d -p {port}:22 -e PUID=1000 -e PGID=1000 --name ssh-lab linuxserver/openssh-server",
+                "vulnerable_versions": ["8.5p1-9.6p1"],  # regreSSHion
+                "install_commands": [
+                    "apt-get update && apt-get install -y openssh-server",
+                    "systemctl start sshd"
+                ],
+                "config_files": ["/etc/ssh/sshd_config"],
+                "default_creds": ["root:root", "admin:admin"],
+                "notes": "For CVE-2024-6387 (regreSSHion) lab, compile specific vulnerable version from source."
+            },
+            "mysql": {
+                "docker_image": f"mysql:{version if version != 'unknown' else '8.0'}",
+                "docker_run": f"docker run -d -p {port}:3306 -e MYSQL_ROOT_PASSWORD=root --name mysql-lab mysql:{version if version != 'unknown' else '8.0'}",
+                "install_commands": [
+                    "apt-get update && apt-get install -y mysql-server",
+                    "systemctl start mysql"
+                ],
+                "config_files": ["/etc/mysql/mysql.conf.d/mysqld.cnf"],
+                "default_creds": ["root:root", "root:mysql", "admin:admin"],
+                "notes": "For auth bypass testing (CVE-2012-2122), use older MySQL 5.x versions."
+            },
+            "redis": {
+                "docker_image": f"redis:{version if version != 'unknown' else 'latest'}",
+                "docker_run": f"docker run -d -p {port}:6379 --name redis-lab redis:{version if version != 'unknown' else 'latest'}",
+                "install_commands": [
+                    "apt-get update && apt-get install -y redis-server",
+                    "# For unauthenticated access: comment out 'bind' and set 'protected-mode no'"
+                ],
+                "config_files": ["/etc/redis/redis.conf"],
+                "notes": "Default Redis has no auth. Enable Lua for CVE-2022-0543 testing."
+            }
+        }
+        
+        # Find matching template
+        setup = None
+        for key, template in SETUP_TEMPLATES.items():
+            if key in product_lower or product_lower in key:
+                setup = template.copy()
+                break
+        
+        # Generic fallback
+        if setup is None:
+            setup = {
+                "docker_run": f"# No specific Docker image available for {product}",
+                "install_commands": [f"# Manual installation required for {product} {version}"],
+                "config_files": [],
+                "notes": f"Search Docker Hub or official documentation for {product} installation instructions."
+            }
+        
+        # Add common fields
+        setup["service_name"] = product
+        setup["version"] = version
+        setup["port"] = port
+        setup["os_recommendation"] = os_info.get("name", "Ubuntu 22.04 LTS") if os_info else "Ubuntu 22.04 LTS"
+        
+        return setup
+    
+    def format_simulation_setup(self, setup_data: Dict[str, Any]) -> str:
+        """Format simulation setup data for display."""
+        lines = [
+            "=" * 70,
+            f"  LAB SETUP: {setup_data.get('service_name', 'Unknown')} {setup_data.get('version', '')}",
+            f"  PORT: {setup_data.get('port', 'N/A')}",
+            "=" * 70,
+            ""
+        ]
+        
+        # Docker section
+        if setup_data.get("docker_run"):
+            lines.append("🐳 DOCKER QUICK START:")
+            lines.append(f"  {setup_data['docker_run']}")
+            lines.append("")
+        
+        # Installation commands
+        if setup_data.get("install_commands"):
+            lines.append("📦 MANUAL INSTALLATION:")
+            for cmd in setup_data["install_commands"]:
+                lines.append(f"  $ {cmd}")
+            lines.append("")
+        
+        # Config files
+        if setup_data.get("config_files"):
+            lines.append("⚙️ CONFIG FILES:")
+            for cfg in setup_data["config_files"]:
+                lines.append(f"  • {cfg}")
+            lines.append("")
+        
+        # Default credentials
+        if setup_data.get("default_creds"):
+            lines.append("🔑 DEFAULT CREDENTIALS TO TRY:")
+            for cred in setup_data["default_creds"]:
+                lines.append(f"  • {cred}")
+            lines.append("")
+        
+        # Test paths
+        if setup_data.get("test_paths"):
+            lines.append("🎯 TEST PATHS:")
+            for path in setup_data["test_paths"]:
+                lines.append(f"  • {path}")
+            lines.append("")
+        
+        # Vulnerable versions
+        if setup_data.get("vulnerable_versions"):
+            lines.append("⚠️ KNOWN VULNERABLE VERSIONS:")
+            lines.append(f"  {', '.join(setup_data['vulnerable_versions'])}")
+            lines.append("")
+        
+        # Notes
+        if setup_data.get("notes"):
+            lines.append("📝 NOTES:")
+            lines.append(f"  {setup_data['notes']}")
+        
+        return "\n".join(lines)
+    
     def format_analysis(self, analysis: ServiceAnalysis) -> str:
         """Format analysis for display."""
         # Color codes for risk levels
@@ -788,7 +964,7 @@ def analyze_target(ip: str, ports: str = "1-1000", model_id: str = "qwen") -> Di
     analyzer = ServiceAnalyzer(model_id=model_id)
     analyses = analyzer.analyze_scan_results({
         "ip": ip,
-        "services": [asdict(s) if hasattr(s, '__dataclass_fields__') else s for s in scan_results]
+        "services": [asdict(s) if hasattr(s, '__dataclass_fields__') else s for s in scan_results.services]
     })
     
     return {

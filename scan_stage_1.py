@@ -156,6 +156,10 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
             final_files = filtered_files
     
     all_findings = []
+    
+    # Progress counters for real-time frontend updates
+    files_scanned_count = 0
+    vulns_found_count = 0
 
     try:
         vuln_scanner = VulnScanner(mode="c_cpp")
@@ -185,7 +189,20 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
                 logger.warning(f"Failed global version detection: {e}")
 
         for file_path in final_files:  # Changed from filtered_files to final_files
-            logger.info(f"Scanning: {os.path.basename(file_path)}")
+            files_scanned_count += 1
+            scan_log(f"[{files_scanned_count}/{len(final_files)}] Scanning: {os.path.basename(file_path)}")
+            
+            # Update progress in DB every 5 files or on vulns found
+            if scan_id and (files_scanned_count % 5 == 0 or files_scanned_count == 1):
+                try:
+                    db_manager.update_scan_progress(scan_id, {
+                        "progress.files_scanned": files_scanned_count,
+                        "progress.total_files": len(final_files),
+                        "progress.vulnerabilities_found": vulns_found_count,
+                        "progress.current_file": os.path.basename(file_path)
+                    })
+                except:
+                    pass  # Don't fail scan if progress update fails
             
             # Register file in DB
             file_id = None
@@ -214,7 +231,17 @@ def scan_stage_1(target_dir, intermediate_file, scan_id=None, quick_scan=False, 
                     # Filter and store
                     confirmed = [v for v in vulnerabilities if v.get('confidence', 0) > 0.5]
                     if confirmed:
-                        logger.info(f"Flagged for analysis: {os.path.basename(file_path)} (Confidence: {confirmed[0]['confidence']:.2f})")
+                        vulns_found_count += len(confirmed)
+                        scan_log(f"🔴 Found {len(confirmed)} vulnerabilities in {os.path.basename(file_path)}")
+                        
+                        # Update progress immediately when vulns found
+                        if scan_id:
+                            try:
+                                db_manager.update_scan_progress(scan_id, {
+                                    "progress.vulnerabilities_found": vulns_found_count
+                                })
+                            except:
+                                pass
                         
                         # Add IDs to finding object for intermediate file consistency
                         finding_entry = {

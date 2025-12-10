@@ -3,8 +3,6 @@ import { ArrowRight, Crosshair } from "lucide-react";
 interface ReconTargetCardProps {
   targetIp: string;
   setTargetIp: (value: string) => void;
-  ports: string;
-  setPorts: (value: string) => void;
   appName: string;
   setAppName: (value: string) => void;
   onScan: () => void;
@@ -14,8 +12,6 @@ interface ReconTargetCardProps {
 const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
   targetIp,
   setTargetIp,
-  ports,
-  setPorts,
   appName,
   setAppName,
   onScan,
@@ -77,20 +73,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
         </div>
       </div>
 
-      {/*Ports Input*/}
-      <div className="flex items-center ml-24 gap-x-4 mt-4">
-        <span className="text-blue-300">Ports:</span>
 
-        <input
-          type="text"
-          name="ports"
-          value={ports}
-          onChange={(e) => setPorts(e.target.value)}
-          disabled={isScanning}
-          className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-          placeholder="21,22,80,443,3306,8080"
-        />
-      </div>
 
       {/*Inputs And Options*/}
       <div className="flex items-center ml-24 gap-x-4 mt-4">

@@ -533,16 +533,25 @@ class PayloadFactoryApp(ctk.CTk):
                         port_list = [int(p.strip()) for p in ports.split(",")]
                 
                 scanner = NetworkScanner()
-                results = scanner.scan_target(ip, ports=port_list)
+                scan_result = scanner.scan_target(ip, ports=port_list)
+                
+                # scan_target now returns ScanResult - extract services list
+                results = scan_result.services if hasattr(scan_result, 'services') else scan_result
                 
                 # Format results
                 output_lines = []
+                
+                # Add OS info if available
+                if hasattr(scan_result, 'os_info') and scan_result.os_info and scan_result.os_info.name != 'Unknown':
+                    output_lines.append(f"OS Detected: {scan_result.os_info.name} ({scan_result.os_info.accuracy}% accuracy)")
+                    output_lines.append("")
+                
                 for svc in results:
                     svc_dict = svc.__dict__ if hasattr(svc, '__dict__') else svc
                     line = f"Port {svc_dict.get('port', 'N/A')}: {svc_dict.get('product', svc_dict.get('service', 'unknown'))} {svc_dict.get('version', '')}"
                     output_lines.append(line)
                 
-                if not output_lines:
+                if len(output_lines) == 0 or (len(output_lines) == 2 and output_lines[1] == ''):
                     output_lines = ["No open ports found."]
                 
                 self.after(0, lambda: self._update_net_services("\n".join(output_lines)))
@@ -656,7 +665,10 @@ class PayloadFactoryApp(ctk.CTk):
                         port_list = [int(p.strip()) for p in ports.split(",")]
                 
                 scanner = NetworkScanner()
-                services = scanner.scan_target(ip, ports=port_list)
+                scan_result = scanner.scan_target(ip, ports=port_list)
+                
+                # scan_target now returns ScanResult - extract services list
+                services = scan_result.services if hasattr(scan_result, 'services') else scan_result
                 
                 # Convert to dict format
                 service_dicts = []

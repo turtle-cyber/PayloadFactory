@@ -251,6 +251,40 @@ class ScanController {
       next(error);
     }
   }
+
+  /**
+   * Clear all scans and findings from database
+   * @route DELETE /api/scans/all
+   */
+  async clearDatabase(req, res, next) {
+    try {
+      logger.info("Clearing database - all scans and findings");
+
+      // Call Python backend to clear database
+      const axios = (await import("axios")).default;
+      const pythonUrl = process.env.PYTHON_API_URL || "http://localhost:8000";
+
+      const response = await axios.delete(`${pythonUrl}/database/clear`);
+
+      if (response.data.success) {
+        logger.info("Database cleared successfully");
+        return res.status(HTTP_STATUS.OK).json({
+          success: true,
+          message: "Database cleared successfully. All scans and findings have been deleted.",
+        });
+      } else {
+        throw new Error(response.data.message || "Failed to clear database");
+      }
+    } catch (error) {
+      logger.error("Error clearing database", { error: error.message });
+      
+      // If Python backend is unavailable, return error
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: error.response?.data?.detail || error.message || "Failed to clear database",
+      });
+    }
+  }
 }
 
 export default new ScanController();

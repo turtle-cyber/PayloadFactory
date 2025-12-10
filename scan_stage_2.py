@@ -113,7 +113,7 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                     other_files.append(full_path)
 
     if not all_findings and not other_files:
-        logger.info("Nothing to process in Stage 2.")
+        scan_log("Nothing to process in Stage 2.")
         return
     
     # Quick Scan Mode: Skip collecting "other files" if flag is set
@@ -148,7 +148,7 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
             logger.info(f"Using target URL for exploits: {target_url}")
         
         # Load LLM via VulnScanner with selected model
-        logger.info(f"Loading LLM (Model: {model_id})...")
+        scan_log(f"Loading LLM (Model: {model_id})...")
         vuln_scanner = VulnScanner(mode="llm", model_id=model_id)
         
         # Initialize ExploitGenerator sharing the SAME model/tokenizer
@@ -170,9 +170,13 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
         payloads_dir = os.path.join(output_dir, "payloads")
         if not os.path.exists(payloads_dir):
             os.makedirs(payloads_dir)
+        
+        # Progress counter for real-time frontend updates
+        exploits_generated_count = 0
 
         # Helper function to generate and save exploit
         def process_and_generate(file_path, vulnerabilities, code_content, file_id=None):
+            nonlocal exploits_generated_count  # Must be at top of nested function
             file_name = os.path.basename(file_path)
             processed_locations = set() # Track unique locations to prevent duplicates
             
@@ -336,6 +340,19 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                         }
                         db_manager.save_exploit(exploit_data, scan_id=scan_id, file_id=file_id)
                         
+                        # Update exploits_generated counter
+                        exploits_generated_count += 1
+                        scan_log(f"✅ Generated exploit #{exploits_generated_count}: {exploit_filename}")
+                        
+                        # Update progress in DB
+                        if scan_id:
+                            try:
+                                db_manager.update_scan_progress(scan_id, {
+                                    "progress.exploits_generated": exploits_generated_count
+                                })
+                            except:
+                                pass  # Don't fail if progress update fails
+                        
                         # Save payload
                         payload_filename = f"payload_{file_name}_{i}_{timestamp}.bin"
                         payload_path = os.path.join(payloads_dir, payload_filename)
@@ -383,6 +400,19 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                              }
                              db_manager.save_exploit(exploit_data, scan_id=scan_id, file_id=file_id)
                              
+                             # Update exploits_generated counter for fallback
+                             exploits_generated_count += 1
+                             scan_log(f"✅ Generated fallback exploit #{exploits_generated_count}: {exploit_filename}")
+                             
+                             # Update progress in DB
+                             if scan_id:
+                                 try:
+                                     db_manager.update_scan_progress(scan_id, {
+                                         "progress.exploits_generated": exploits_generated_count
+                                     })
+                                 except:
+                                     pass
+                             
                              # DEFERRED: Auto-execution is now handled in Stage 3
                              if auto_execute:
                                  logger.info(f"Fallback exploit generated. Queued for Stage 3 execution: {exploit_filename}")
@@ -392,7 +422,7 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
 
         # 1. Process Stage 1 Findings (Interleaved)
         if all_findings:
-            logger.info(f"Processing {len(all_findings)} findings from Stage 1...")
+            scan_log(f"Processing {len(all_findings)} findings from Stage 1...")
             for finding in all_findings:
                 file_path = finding['file_path']
                 # Retrieve IDs if they exist from Stage 1
@@ -416,9 +446,9 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
 
         # 2. Scan & Process Other Files (Interleaved)
         if other_files:
-            logger.info(f"Scanning {len(other_files)} other files...")
+            scan_log(f"Scanning {len(other_files)} other files...")
             for file_path in other_files:
-                logger.info(f"Scanning: {os.path.basename(file_path)}")
+                scan_log(f"Scanning: {os.path.basename(file_path)}")
                 
                 # Register file in DB
                 file_id = None

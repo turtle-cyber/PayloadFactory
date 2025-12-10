@@ -57,6 +57,7 @@ class ReconController {
         data: {
           target_ip,
           services: scanResult.data.services,
+          os_info: scanResult.data.os_info,
           scan_time: scanResult.data.scan_time,
         },
       });
@@ -117,6 +118,65 @@ class ReconController {
       });
     } catch (error) {
       logger.error("Error during service analysis", {
+        error: error.message,
+      });
+      next(error);
+    }
+  }
+
+  /**
+   * Generate simulation/lab setup guide for a service
+   * @route POST /api/recon/simulation-setup
+   */
+  async simulationSetup(req, res, next) {
+    try {
+      const { service, os_info } = req.body;
+
+      // Validate input
+      if (!service || !service.port) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "Service information is required",
+        });
+      }
+
+      logger.info("Generating simulation setup", {
+        port: service.port,
+        product: service.product || service.service,
+      });
+
+      // Call Python backend for simulation setup
+      const axios = (await import("axios")).default;
+      const response = await axios.post(
+        `${process.env.PYTHON_API_URL || "http://localhost:8000"}/recon/simulation-setup`,
+        {
+          service: service,
+          os_info: os_info || null,
+        },
+        { timeout: 120000 } // 2 minute timeout for LLM generation
+      );
+
+      if (!response.data.success) {
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: "Failed to generate simulation setup",
+        });
+      }
+
+      logger.info("Simulation setup generated successfully", {
+        port: service.port,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: "Simulation setup generated successfully",
+        data: {
+          setup_data: response.data.setup_data,
+          formatted_guide: response.data.formatted_guide,
+        },
+      });
+    } catch (error) {
+      logger.error("Error generating simulation setup", {
         error: error.message,
       });
       next(error);

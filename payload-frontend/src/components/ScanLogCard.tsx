@@ -22,7 +22,12 @@ const ScanLogCard: React.FC<ScanLogCardProps> = ({ scanId, isScanning }) => {
   const lastOffsetRef = useRef(0);
 
   const fetchLogs = useCallback(async () => {
-    if (!scanId) return;
+    if (!scanId) {
+      console.log("[ScanLogCard] No scanId yet");
+      return;
+    }
+
+    console.log("[ScanLogCard] Fetching logs for scanId:", scanId);
 
     try {
       const response = await http.get(`/scans/${scanId}/logs`, {
@@ -31,6 +36,8 @@ const ScanLogCard: React.FC<ScanLogCardProps> = ({ scanId, isScanning }) => {
           limit: 100,
         },
       });
+
+      console.log("[ScanLogCard] API Response:", response.data);
 
       if (response.data.success && response.data.data) {
         const newLogs = response.data.data.logs || [];
@@ -43,7 +50,7 @@ const ScanLogCard: React.FC<ScanLogCardProps> = ({ scanId, isScanning }) => {
         setTotalLogs(total);
       }
     } catch (error) {
-      console.error("Error fetching scan logs:", error);
+      console.error("[ScanLogCard] Error fetching scan logs:", error);
     }
   }, [scanId]);
 
@@ -131,7 +138,7 @@ const ScanLogCard: React.FC<ScanLogCardProps> = ({ scanId, isScanning }) => {
       {/* Terminal Window */}
       <div className="p-4">
         <div className="items-center justify-between flex rounded-t-lg bg-[#2f2f2f] py-2 px-4">
-          <span className="font-md text-gray-500">Running Logs</span>
+          <span className="font-md text-gray-500"></span>
           {isScanning && (
             <span className="flex items-center gap-2 text-green-400 text-sm">
               <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>

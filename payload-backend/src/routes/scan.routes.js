@@ -107,4 +107,11 @@ router.get("/:id/logs", async (req, res, next) => {
   }
 });
 
+/**
+ * @route   DELETE /api/scans/all
+ * @desc    Clear all scans and findings from database
+ * @access  Public
+ */
+router.delete("/all", scanController.clearDatabase.bind(scanController));
+
 export default router;

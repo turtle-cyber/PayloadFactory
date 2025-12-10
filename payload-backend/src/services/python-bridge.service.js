@@ -167,7 +167,7 @@ class PythonBridgeService {
         "/network/scan",
         scanConfig,
         {
-          timeout: 120000, // 2 minutes for network scans
+          timeout: 300000, // 5 minutes for network scans with OS detection
         }
       );
 

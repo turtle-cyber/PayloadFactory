@@ -47,6 +47,28 @@ class ServiceInfo:
         if self.extra_info is None:
             self.extra_info = {}
 
+@dataclass
+class OSInfo:
+    """Container for OS detection information"""
+    name: str = "Unknown"
+    accuracy: int = 0
+    family: str = "Unknown"
+    vendor: str = "Unknown"
+    os_gen: str = "Unknown"
+
+@dataclass
+class ScanResult:
+    """Container for complete scan results including services and OS info"""
+    services: List[ServiceInfo] = None
+    os_info: OSInfo = None
+    host_state: str = "unknown"
+    
+    def __post_init__(self):
+        if self.services is None:
+            self.services = []
+        if self.os_info is None:
+            self.os_info = OSInfo()
+
 class NetworkScanner:
     """
     Advanced network scanner with stealth and evasion capabilities.
@@ -208,7 +230,7 @@ class NetworkScanner:
         return ' '.join(args)
 
     # --- Main Scan Method (Adapted for API Compatibility) ---
-    def scan_target(self, ip: str, ports: Optional[List[int]] = None, deep_scan: bool = False) -> List[ServiceInfo]:
+    def scan_target(self, ip: str, ports: Optional[List[int]] = None, deep_scan: bool = False) -> ScanResult:
         """
         Scan a target IP address using STRICTLY Nmap.
         
@@ -218,12 +240,12 @@ class NetworkScanner:
             deep_scan: Enable aggressive/deep scanning options
             
         Returns:
-            List of ServiceInfo objects. Returns empty list if Nmap fails or is missing.
+            ScanResult containing services list and OS info. Returns empty ScanResult if Nmap fails.
         """
         if not self.nm:
             logger.error("Scan aborted: Nmap not initialized. Make sure Nmap binary is in PATH.")
-            # We return empty list to indicate no results, instead of fake fallback data
-            return []
+            # Return empty ScanResult to indicate no results
+            return ScanResult(services=[], os_info=OSInfo())
 
         try:
             # Prepare configuration - REQUIRES ADMIN for best results
@@ -235,7 +257,7 @@ class NetworkScanner:
                 'stealth_technique': 'syn',  # -sS = half-open scan
                 'version_detection': True,  # Always attempt version detection
                 'version_intensity': 9,  # Maximum version probing intensity (0-9)
-                'os_detection': False,  # Skip OS detection initially
+                'os_detection': True,  # Enable OS detection (requires admin/root)
                 'timing': 4,  # T4 = aggressive timing
                 'skip_ping': True,  # Assume host is up
                 'no_dns': True,  # Skip DNS resolution for speed
@@ -269,6 +291,7 @@ class NetworkScanner:
             
             # Process Results
             services = []
+            os_info = OSInfo()  # Default OS info
             
             for host in self.nm.all_hosts():
                 if host not in [clean_ip, hostname]:
@@ -279,9 +302,18 @@ class NetworkScanner:
                 
                 # Report Host Status
                 self.logger.info(f"Host {host} is {host_data.state()}")
+                
+                # Extract OS information
                 if 'osmatch' in host_data and host_data['osmatch']:
-                    os_name = host_data['osmatch'][0]['name']
-                    self.logger.info(f"OS Detected: {os_name}")
+                    os_match = host_data['osmatch'][0]
+                    os_info = OSInfo(
+                        name=os_match.get('name', 'Unknown'),
+                        accuracy=int(os_match.get('accuracy', 0)),
+                        family=os_match.get('osclass', [{}])[0].get('osfamily', 'Unknown') if os_match.get('osclass') else 'Unknown',
+                        vendor=os_match.get('osclass', [{}])[0].get('vendor', 'Unknown') if os_match.get('osclass') else 'Unknown',
+                        os_gen=os_match.get('osclass', [{}])[0].get('osgen', 'Unknown') if os_match.get('osclass') else 'Unknown'
+                    )
+                    self.logger.info(f"OS Detected: {os_info.name} (accuracy: {os_info.accuracy}%)")
 
                 for proto in ['tcp', 'udp']:
                     if proto not in host_data: continue
@@ -320,11 +352,11 @@ class NetworkScanner:
                         services.append(svc)
             
             self.logger.info(f"Scan complete. Found {len(services)} services.")
-            return services
+            return ScanResult(services=services, os_info=os_info)
 
         except Exception as e:
             self.logger.error(f"Nmap scan failed: {e}")
-            return []
+            return ScanResult(services=[], os_info=OSInfo())
 
     def format_results(self, services: List[ServiceInfo]) -> str:
         """Format scan results as human-readable text."""
