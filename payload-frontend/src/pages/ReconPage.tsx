@@ -45,26 +45,39 @@ interface ScanProgress {
 // Helper functions for progress display
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "completed": return "text-green-500";
-    case "failed": return "text-red-500";
-    case "cancelled": return "text-yellow-500";
+    case "completed":
+      return "text-green-500";
+    case "failed":
+      return "text-red-500";
+    case "cancelled":
+      return "text-yellow-500";
     case "stage-1":
     case "stage-2":
-    case "stage-3": return "text-blue-500";
-    default: return "text-gray-500";
+    case "stage-3":
+      return "text-blue-500";
+    default:
+      return "text-gray-500";
   }
 };
 
 const getStageLabel = (status: string) => {
   switch (status) {
-    case "pending": return "Initializing...";
-    case "stage-1": return "Stage 1: Scanning";
-    case "stage-2": return "Stage 2: Generating Exploits";
-    case "stage-3": return "Stage 3: Fuzzing & Optimization";
-    case "completed": return "Completed";
-    case "failed": return "Failed";
-    case "cancelled": return "Cancelled";
-    default: return status;
+    case "pending":
+      return "Initializing...";
+    case "stage-1":
+      return "Stage 1: Scanning";
+    case "stage-2":
+      return "Stage 2: Generating Exploits";
+    case "stage-3":
+      return "Stage 3: Fuzzing & Optimization";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status;
   }
 };
 
@@ -129,12 +142,18 @@ const ReconPage = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+  // single-selection index (radio-style)
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [acknowledgmentChecked, setAcknowledgmentChecked] = useState(false);
-  const [processingProgress, setProcessingProgress] = useState<{ current: number; total: number } | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
   const hasPrefilledFromHistory = useRef(false);
 
   // Prefill from history navigation state
@@ -150,9 +169,9 @@ const ReconPage = () => {
       if (state.os_info) setOsInfo(state.os_info);
       if (state.services) setServices(state.services);
 
-      // Select the clicked service and show its guide
+      // Select the clicked service (single index)
       if (typeof state.selectedServiceIndex === "number") {
-        setSelectedIndices([state.selectedServiceIndex]);
+        setSelectedIndex(state.selectedServiceIndex);
       }
 
       // Show the analysis/guide for the selected service
@@ -175,36 +194,44 @@ const ReconPage = () => {
     }
   }, []);
 
-  const startPolling = useCallback((scanId: string) => {
-    stopPolling();
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await http.get(`/scans/${scanId}/status`);
-        if (response.data.success) {
-          const scanData = response.data.data;
-          setScanProgress(scanData);
-          
-          // Save to localStorage for persistence
-          saveReconScanToStorage(scanData, undefined);
+  const startPolling = useCallback(
+    (scanId: string) => {
+      stopPolling();
+      pollingIntervalRef.current = setInterval(async () => {
+        try {
+          const response = await http.get(`/scans/${scanId}/status`);
+          if (response.data.success) {
+            const scanData = response.data.data;
+            setScanProgress(scanData);
 
-          // Stop polling if scan finished
-          if (["completed", "failed", "cancelled"].includes(scanData.status)) {
-            stopPolling();
-            setIsAnalyzing(false);
-            // Clear from storage or keep for display - we keep it for display but mark as finished
+            // Save to localStorage for persistence
             saveReconScanToStorage(scanData, undefined);
-            if (scanData.status === "completed") {
-              toast.success("Attack completed", "View results in the Findings page");
-            } else if (scanData.status === "failed") {
-              toast.error("Attack failed", "Check logs for details");
+
+            // Stop polling if scan finished
+            if (
+              ["completed", "failed", "cancelled"].includes(scanData.status)
+            ) {
+              stopPolling();
+              setIsAnalyzing(false);
+              // Keep for display but mark finished
+              saveReconScanToStorage(scanData, undefined);
+              if (scanData.status === "completed") {
+                toast.success(
+                  "Attack completed",
+                  "View results in the Findings page"
+                );
+              } else if (scanData.status === "failed") {
+                toast.error("Attack failed", "Check logs for details");
+              }
             }
           }
+        } catch (error) {
+          console.error("Polling error:", error);
         }
-      } catch (error) {
-        console.error("Polling error:", error);
-      }
-    }, 2000);
-  }, [stopPolling]);
+      }, 2000);
+    },
+    [stopPolling]
+  );
 
   // Cleanup on unmount
   useEffect(() => {
@@ -215,11 +242,15 @@ const ReconPage = () => {
   useEffect(() => {
     const storedScan = loadReconScanFromStorage();
     if (storedScan) {
-      console.log("[ReconPage] Found stored scan:", storedScan.scan_id, storedScan.status);
-      
+      console.log(
+        "[ReconPage] Found stored scan:",
+        storedScan.scan_id,
+        storedScan.status
+      );
+
       // Set the currentScanId for logs
       setCurrentScanId(storedScan.scan_id);
-      
+
       // If scan was in-progress, resume polling
       const inProgressStatuses = ["pending", "stage-1", "stage-2", "stage-3"];
       if (inProgressStatuses.includes(storedScan.status)) {
@@ -241,7 +272,7 @@ const ReconPage = () => {
           started_at: storedScan.started_at,
         });
       }
-      
+
       // Restore target IP if saved
       if (storedScan.target_ip) {
         setTargetIp(storedScan.target_ip);
@@ -249,24 +280,24 @@ const ReconPage = () => {
     }
   }, [startPolling]);
 
-  // Toggle service selection and generate simulation setup
-  const handleServiceToggle = async (index: number) => {
-    // Update selection state
-    setSelectedIndices(prev => {
-      if (prev.includes(index)) {
-        return prev.filter(i => i !== index);
-      } else {
-        return [...prev, index];
-      }
-    });
+  // Single-select handler (row click or radio) - generates guide for selected service
+  const handleServiceSelect = async (index: number | null) => {
+    // Toggle: clicking the same row deselects it
+    if (selectedIndex === index) {
+      setSelectedIndex(null);
+      setAnalysis("");
+      return;
+    }
 
-    // Get selected service
+    setSelectedIndex(index);
+
+    if (index === null) return;
+
     const selectedService = services[index];
     if (!selectedService) return;
 
-    // Generate simulation setup guide for selected service
     setAnalysis("🔄 Generating simulation setup guide...");
-    
+
     try {
       const response = await http.post("/recon/simulation-setup", {
         service: selectedService,
@@ -274,23 +305,26 @@ const ReconPage = () => {
       });
 
       if (response.data.success) {
-        // Display the formatted guide
         setAnalysis(response.data.data.formatted_guide);
         toast.success(
           "Setup Guide Ready",
-          `Generated lab setup for ${selectedService.product || selectedService.service}`
+          `Generated lab setup for ${
+            selectedService.product || selectedService.service
+          }`
         );
       } else {
         setAnalysis("Failed to generate setup guide. Please try again.");
       }
     } catch (error: any) {
       console.error("Simulation setup error:", error);
-      setAnalysis(`Error: ${error.response?.data?.message || error.message}\n\nPlease ensure the Python backend is running.`);
+      setAnalysis(
+        `Error: ${
+          error.response?.data?.message || error.message
+        }\n\nPlease ensure the Python backend is running.`
+      );
     } finally {
-      // Loading complete
+      setAcknowledgmentChecked(false);
     }
-
-    setAcknowledgmentChecked(false);
   };
 
   // Acknowledgment handler
@@ -307,9 +341,9 @@ const ReconPage = () => {
 
     setIsScanning(true);
     setOsInfo(null);
-    setSelectedIndices([]);
+    setSelectedIndex(null);
     setAnalysis("");
-    
+
     try {
       const response = await http.post("/recon/scan", {
         target_ip: targetIp,
@@ -318,12 +352,12 @@ const ReconPage = () => {
 
       if (response.data.success) {
         setServices(response.data.data.services);
-        
+
         // Set OS info if available
         if (response.data.data.os_info) {
           setOsInfo(response.data.data.os_info);
         }
-        
+
         toast.success(
           "Scan complete",
           `Found ${response.data.data.services.length} services. Click on a port to generate setup guide.`
@@ -331,11 +365,16 @@ const ReconPage = () => {
 
         // Show hint to user
         if (response.data.data.services.length > 0) {
-          setAnalysis("👆 Click on a discovered service/port above to generate a simulation setup guide.");
+          setAnalysis(
+            "👆 Click on a discovered service/port above to generate a simulation setup guide."
+          );
         }
       }
     } catch (error: any) {
-      toast.error("Scan failed", error.response?.data?.message || error.message);
+      toast.error(
+        "Scan failed",
+        error.response?.data?.message || error.message
+      );
     } finally {
       setIsScanning(false);
     }
@@ -378,33 +417,36 @@ const ReconPage = () => {
   };
 
   // Poll for scan completion
-  const pollScanCompletion = useCallback(async (scanId: string): Promise<boolean> => {
-    const maxAttempts = 600; // 10 minutes max (every 1 second)
-    let attempts = 0;
+  const pollScanCompletion = useCallback(
+    async (scanId: string): Promise<boolean> => {
+      const maxAttempts = 600; // 10 minutes max (every 1 second)
+      let attempts = 0;
 
-    while (attempts < maxAttempts) {
-      try {
-        const response = await http.get(`/scan/status/${scanId}`);
-        const status = response.data.data?.status || response.data.status;
+      while (attempts < maxAttempts) {
+        try {
+          const response = await http.get(`/scan/status/${scanId}`);
+          const status = response.data.data?.status || response.data.status;
 
-        if (status === "completed") {
-          return true;
-        } else if (status === "failed" || status === "cancelled") {
-          return false;
+          if (status === "completed") {
+            return true;
+          } else if (status === "failed" || status === "cancelled") {
+            return false;
+          }
+
+          // Wait 1 second before polling again
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          attempts++;
+        } catch (error) {
+          console.error("Polling error:", error);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          attempts++;
         }
-
-        // Wait 1 second before polling again
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        attempts++;
-      } catch (error) {
-        console.error("Polling error:", error);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        attempts++;
       }
-    }
 
-    return false; // Timeout
-  }, []);
+      return false; // Timeout
+    },
+    []
+  );
 
   // Whitebox handler with sequential port processing
   const handleWhitebox = async () => {
@@ -418,20 +460,23 @@ const ReconPage = () => {
       return;
     }
 
-    // Get selected ports or default to first port/8080
-    const portsToProcess = selectedIndices.length > 0
-      ? selectedIndices.map(i => services[i]?.port).filter(Boolean)
-      : services.length > 0
+    // Get the single selected port or fallback to first or 8080
+    const portsToProcess =
+      selectedIndex !== null
+        ? [services[selectedIndex]?.port].filter(Boolean)
+        : services.length > 0
         ? [services[0].port]
         : [8080];
 
     if (portsToProcess.length === 0) {
-      toast.error("No ports selected", "Please select at least one port to attack");
+      toast.error(
+        "No ports selected",
+        "Please select at least one port to attack"
+      );
       return;
     }
 
     // IMPORTANT: Clear old scan data before starting a new scan
-    // This prevents old findings from persisting in the UI
     clearReconScanFromStorage();
     setCurrentScanId(null);
     setScanProgress(null);
@@ -474,7 +519,11 @@ const ReconPage = () => {
 
         const scanId = response.data.data.scan_id;
         setCurrentScanId(scanId); // Track current scan for logs
-        const initialProgress: ScanProgress = { scan_id: scanId, status: "pending", project_name: appName || "Whitebox Target" };
+        const initialProgress: ScanProgress = {
+          scan_id: scanId,
+          status: "pending",
+          project_name: appName || "Whitebox Target",
+        };
         setScanProgress(initialProgress);
         saveReconScanToStorage(initialProgress, targetIp); // Save to localStorage
         startPolling(scanId); // Start polling for progress updates
@@ -487,7 +536,6 @@ const ReconPage = () => {
             `Monitoring scan progress for port ${port}...`
           );
           // Stay on ReconPage - progress box will show status via polling
-          // User can navigate to Results page when done
           return;
         }
 
@@ -496,9 +544,15 @@ const ReconPage = () => {
         const completed = await pollScanCompletion(scanId);
 
         if (completed) {
-          toast.success(`Port ${port} scan completed`, `Moving to next port...`);
+          toast.success(
+            `Port ${port} scan completed`,
+            `Moving to next port...`
+          );
         } else {
-          toast.warning(`Port ${port} scan may have issues`, `Continuing to next port...`);
+          toast.warning(
+            `Port ${port} scan may have issues`,
+            `Continuing to next port...`
+          );
         }
       }
     } catch (error: any) {
@@ -532,8 +586,8 @@ const ReconPage = () => {
             <FingerprintTable
               services={services}
               osInfo={osInfo}
-              selectedIndices={selectedIndices}
-              onServiceToggle={handleServiceToggle}
+              selectedIndex={selectedIndex}
+              onServiceSelect={handleServiceSelect}
             />
           </div>
 
@@ -542,7 +596,9 @@ const ReconPage = () => {
             <div className="glassmorphism-card rounded-xl p-6 border border-blue-500/30 bg-blue-500/5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  {!["completed", "failed", "cancelled"].includes(scanProgress?.status || "") && (
+                  {!["completed", "failed", "cancelled"].includes(
+                    scanProgress?.status || ""
+                  ) && (
                     <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full" />
                   )}
                   <h2 className="text-lg font-semibold text-white">
@@ -551,7 +607,11 @@ const ReconPage = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                   {scanProgress && (
-                    <span className={`text-sm font-medium ${getStatusColor(scanProgress.status)}`}>
+                    <span
+                      className={`text-sm font-medium ${getStatusColor(
+                        scanProgress.status
+                      )}`}
+                    >
                       {getStageLabel(scanProgress.status)}
                     </span>
                   )}
@@ -563,18 +623,21 @@ const ReconPage = () => {
                       setCurrentScanId(null);
                       clearReconScanFromStorage();
                       stopPolling();
-                      
+
                       // Also reset form state for a completely fresh start
                       setServices([]);
                       setOsInfo(null);
-                      setSelectedIndices([]);
+                      setSelectedIndex(null);
                       setAnalysis("");
                       setSelectedFile(null);
                       setAcknowledgmentChecked(false);
                       setProcessingProgress(null);
                       setIsAnalyzing(false);
-                      
-                      toast.success("Ready for New Scan", "All old data cleared. Enter a new target to begin.");
+
+                      toast.success(
+                        "Ready for New Scan",
+                        "All old data cleared. Enter a new target to begin."
+                      );
                     }}
                     className="px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-xs rounded transition-colors font-medium"
                     title="Clear all old data and start completely fresh"
@@ -588,7 +651,8 @@ const ReconPage = () => {
               {processingProgress && (
                 <div className="mb-4 p-3 bg-black/30 rounded-lg">
                   <p className="text-blue-400 font-medium">
-                    Processing port {processingProgress.current} of {processingProgress.total}
+                    Processing port {processingProgress.current} of{" "}
+                    {processingProgress.total}
                   </p>
                 </div>
               )}
@@ -599,7 +663,9 @@ const ReconPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-black/30 rounded-lg p-3">
                       <p className="text-gray-400 text-sm mb-1">Scan ID</p>
-                      <p className="text-white font-mono text-sm truncate">{scanProgress.scan_id}</p>
+                      <p className="text-white font-mono text-sm truncate">
+                        {scanProgress.scan_id}
+                      </p>
                     </div>
                     <div className="bg-black/30 rounded-lg p-3">
                       <p className="text-gray-400 text-sm mb-1">Target</p>
@@ -610,13 +676,17 @@ const ReconPage = () => {
                   {scanProgress.progress && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-black/30 rounded-lg p-3">
-                        <p className="text-gray-400 text-sm mb-1">Files Scanned</p>
+                        <p className="text-gray-400 text-sm mb-1">
+                          Files Scanned
+                        </p>
                         <p className="text-white text-xl font-semibold">
                           {scanProgress.progress.files_scanned || 0}
                         </p>
                       </div>
                       <div className="bg-black/30 rounded-lg p-3">
-                        <p className="text-gray-400 text-sm mb-1">Vulnerabilities</p>
+                        <p className="text-gray-400 text-sm mb-1">
+                          Vulnerabilities
+                        </p>
                         <p className="text-red-400 text-xl font-semibold">
                           {scanProgress.progress.vulnerabilities_found || 0}
                         </p>
@@ -646,7 +716,9 @@ const ReconPage = () => {
                   )}
 
                   {/* Dismiss button for completed/failed scans */}
-                  {["completed", "failed", "cancelled"].includes(scanProgress.status) && (
+                  {["completed", "failed", "cancelled"].includes(
+                    scanProgress.status
+                  ) && (
                     <div className="flex justify-end mt-4">
                       <button
                         onClick={() => {
@@ -689,10 +761,7 @@ const ReconPage = () => {
 
           {/* Scan Logs */}
           <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-            <ScanLogCard
-              scanId={currentScanId}
-              isScanning={isAnalyzing}
-            />
+            <ScanLogCard scanId={currentScanId} isScanning={isAnalyzing} />
           </div>
         </div>
       </div>
