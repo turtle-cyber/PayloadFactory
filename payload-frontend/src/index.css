@@ -28,11 +28,17 @@ body {
   }
 
   .glassmorphism-card {
-    background: rgb(20, 14, 14, 0.3);
+    /* background: rgb(202, 142, 142, 0.1); */
+    background: rgb(20, 14, 14, 0.1);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(20px);
-    /* box-shadow: 0 8px 32px 0 rgba(255, 0, 0, 0.1),
-      inset 0 1px 1px 0 rgba(255, 255, 255, 0.05); */
+    padding: 32px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    border-top-color: rgba(255, 255, 255, 0.38);
+    border-bottom-color: rgba(180, 180, 180, 0.12);
+    border-left-color: rgba(217, 217, 217, 0.25);
+    border-right-color: rgba(217, 217, 217, 0.25);
   }
 }
 
