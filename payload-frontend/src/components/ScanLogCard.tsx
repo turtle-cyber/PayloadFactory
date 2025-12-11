@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { http } from "../utils/http";
+import { Logs } from "lucide-react";
 
 interface ScanLog {
   _id: string;
@@ -126,7 +127,7 @@ const ScanLogCard: React.FC<ScanLogCardProps> = ({ scanId, isScanning }) => {
       <div className="items-center flex gap-2 justify-between">
         <div className="flex items-center gap-2">
           <div className="text-gray-400">
-            {/* <Signpost className="w-5" /> */}
+            <Logs className="w-5" />
           </div>
           <h2 className="text-blue-500 text-lg">Scan Logs</h2>
         </div>
@@ -153,9 +154,7 @@ const ScanLogCard: React.FC<ScanLogCardProps> = ({ scanId, isScanning }) => {
         >
           {logs.length === 0 ? (
             <div className="text-gray-600 italic">
-              {scanId
-                ? "Waiting for logs..."
-                : "Start a scan to see logs here"}
+              {scanId ? "Waiting for logs..." : "Start a scan to see logs here"}
             </div>
           ) : (
             logs.map((log, index) => (

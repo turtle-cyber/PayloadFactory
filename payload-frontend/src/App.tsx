@@ -16,6 +16,8 @@ import "./index.css";
 import FindingPage from "./pages/FindingPage";
 import AgentPage from "./pages/AgentPage";
 import ReconPage from "./pages/ReconPage";
+import ReconHistoryPage from "./pages/ReconHistoryPage";
+import ReconHistoryDetailPage from "./pages/ReconHistoryDetailPage";
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -75,6 +77,11 @@ const AppContent: React.FC = () => {
           <Route path="/" element={<LandingPage />} />
           <Route path="/scan" element={<ScanPage />} />
           <Route path="/recon" element={<ReconPage />} />
+          <Route path="/recon/history" element={<ReconHistoryPage />} />
+          <Route
+            path="/recon/history/:recon_id"
+            element={<ReconHistoryDetailPage />}
+          />
           <Route path="/agent" element={<AgentPage />} />
           <Route path="/command-center" element={<CommandCenter />} />
           <Route path="/results" element={<ResultsPage />} />

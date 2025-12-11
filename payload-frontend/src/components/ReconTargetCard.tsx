@@ -1,4 +1,5 @@
-import { ArrowRight, Crosshair } from "lucide-react";
+import { ArrowRight, Crosshair, History } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface ReconTargetCardProps {
   targetIp: string;
@@ -17,14 +18,27 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
   onScan,
   isScanning,
 }) => {
+  const navigate = useNavigate();
+
+  const handleNavigateHistory = () => {
+    navigate("/recon/history");
+  };
+
   return (
     <div>
       {/*Heading*/}
-      <div className="items-center flex gap-2">
-        <div className="text-gray-400">
+      <div className="items-center justify-between flex gap-2">
+        <div className="text-gray-400 flex items-center gap-2">
           <Crosshair className="w-5" />
+          <h2 className="text-blue-500 text-lg">Recon Target</h2>
         </div>
-        <h2 className="text-blue-500 text-lg">Recon Target</h2>
+
+        <div
+          className="p-2.5 h-11 w-11 justify-center items-center flex rounded-xl border border-gray-700/50 bg-transparent hover:border-gray-600 hover:bg-gray-800/80 transition-all shadow-lg cursor-pointer"
+          onClick={handleNavigateHistory}
+        >
+          <History className="w-5 h-5 text-gray-400" />
+        </div>
       </div>
 
       {/*Terminal Window */}
@@ -72,8 +86,6 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
           </div>
         </div>
       </div>
-
-
 
       {/*Inputs And Options*/}
       <div className="flex items-center ml-24 gap-x-4 mt-4">

@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import AdmZip from "adm-zip";
+import reconService from "../services/recon.service.js";
 
 /**
  * Controller for network reconnaissance endpoints
@@ -148,7 +149,9 @@ class ReconController {
       // Call Python backend for simulation setup
       const axios = (await import("axios")).default;
       const response = await axios.post(
-        `${process.env.PYTHON_API_URL || "http://localhost:8000"}/recon/simulation-setup`,
+        `${
+          process.env.PYTHON_API_URL || "http://localhost:8000"
+        }/recon/simulation-setup`,
         {
           service: service,
           os_info: os_info || null,
@@ -324,7 +327,14 @@ class ReconController {
         });
       }
 
-      const { targetIp, targetPort, applicationName, attackMode, autoExec, demoMode } = req.body;
+      const {
+        targetIp,
+        targetPort,
+        applicationName,
+        attackMode,
+        autoExec,
+        demoMode,
+      } = req.body;
 
       // Validate target IP
       if (!targetIp || !targetIp.trim()) {
@@ -381,7 +391,8 @@ class ReconController {
         source_path: extractedPath,
         target_ip: targetIp.trim(),
         target_port: targetPort || "8080",
-        application_name: applicationName || req.file.originalname.replace(".zip", ""),
+        application_name:
+          applicationName || req.file.originalname.replace(".zip", ""),
         attack_mode: attackMode === "true",
         auto_execute: autoExec === "true",
         demo_mode: demoMode === "true",
@@ -405,7 +416,9 @@ class ReconController {
         },
       });
     } catch (error) {
-      logger.error("Error processing whitebox upload", { error: error.message });
+      logger.error("Error processing whitebox upload", {
+        error: error.message,
+      });
 
       // Clean up on error
       if (req.file && fs.existsSync(req.file.path)) {
@@ -428,6 +441,62 @@ class ReconController {
         }
       }
 
+      next(error);
+    }
+  }
+
+  async getReconHistory(req, res, next) {
+    try {
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 10;
+      const sortParam = (req.query.sort || "desc").toLowerCase();
+      const sort = sortParam === "asc" ? 1 : -1;
+
+      logger.info("Fetching recon history", { page, limit, sort: sortParam });
+
+      const result = await reconService.getReconHistory({ page, limit, sort });
+
+      logger.info("Recon history fetched", {
+        returned: result.recons.length,
+        page: result.page,
+        total: result.total,
+      });
+
+      return res.status(HTTP_STATUS.OK).json(result);
+    } catch (error) {
+      logger.error("Error fetching recon history", { error: error.message });
+      next(error);
+    }
+  }
+
+  /**
+   * Get a single recon by scan_id
+   * @route GET /api/recon/history?id=scan_id
+   */
+  async getReconById(req, res, next) {
+    try {
+      const { id } = req.query;
+
+      if (!id) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "Recon ID is required",
+        });
+      }
+
+      logger.info("Fetching recon by ID", { scan_id: id });
+
+      const result = await reconService.getReconById(id);
+
+      if (!result.success) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json(result);
+      }
+
+      logger.info("Recon fetched", { scan_id: id });
+
+      return res.status(HTTP_STATUS.OK).json(result);
+    } catch (error) {
+      logger.error("Error fetching recon by ID", { error: error.message });
       next(error);
     }
   }
