@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import ExploitGenerationCard from "@/components/ExploitGenerationCard";
 import FingerprintTable from "@/components/FingerprintTable";
 import GuideCard from "@/components/GuideCard";
@@ -6,6 +7,17 @@ import ReconTargetCard from "@/components/ReconTargetCard";
 import ScanLogCard from "@/components/ScanLogCard";
 import { http } from "@/utils/http";
 import { toast } from "@/utils/toast";
+
+// Navigation state interface for data from history page
+interface HistoryNavigationState {
+  fromHistory: boolean;
+  target_ip: string;
+  scan_name: string;
+  os_info: OSInfo | null;
+  services: any[];
+  selectedServiceIndex: number;
+  selectedServiceAnalysis: string | null;
+}
 
 interface OSInfo {
   name: string;
@@ -105,6 +117,7 @@ const clearReconScanFromStorage = () => {
 };
 
 const ReconPage = () => {
+  const location = useLocation();
 
   // State management
   const [targetIp, setTargetIp] = useState("");
@@ -122,6 +135,37 @@ const ReconPage = () => {
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasPrefilledFromHistory = useRef(false);
+
+  // Prefill from history navigation state
+  useEffect(() => {
+    const state = location.state as HistoryNavigationState | null;
+
+    if (state?.fromHistory && !hasPrefilledFromHistory.current) {
+      hasPrefilledFromHistory.current = true;
+
+      // Prefill form fields
+      if (state.target_ip) setTargetIp(state.target_ip);
+      if (state.scan_name) setAppName(state.scan_name);
+      if (state.os_info) setOsInfo(state.os_info);
+      if (state.services) setServices(state.services);
+
+      // Select the clicked service and show its guide
+      if (typeof state.selectedServiceIndex === "number") {
+        setSelectedIndices([state.selectedServiceIndex]);
+      }
+
+      // Show the analysis/guide for the selected service
+      if (state.selectedServiceAnalysis) {
+        setAnalysis(state.selectedServiceAnalysis);
+      }
+
+      toast.success(
+        "Loaded from history",
+        `Viewing data for ${state.scan_name || state.target_ip}`
+      );
+    }
+  }, [location.state]);
 
   // Polling functions
   const stopPolling = useCallback(() => {

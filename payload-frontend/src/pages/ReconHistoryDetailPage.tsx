@@ -20,6 +20,7 @@ interface Service {
   version: string;
   product: string;
   banner: string;
+  aiml_analysis?: string;
 }
 
 interface ReconDetail {
@@ -55,6 +56,25 @@ const ReconHistoryDetailPage = () => {
   const navigate = useNavigate();
   const [recon, setRecon] = useState<ReconDetail | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const handleServiceArrowClick = (serviceIndex: number) => {
+    if (!recon) return;
+
+    const selectedService = recon.services[serviceIndex];
+
+    // Navigate to ReconPage with prefilled data
+    navigate("/recon", {
+      state: {
+        fromHistory: true,
+        target_ip: recon.target_ip,
+        scan_name: recon.scan_name,
+        os_info: recon.os_info,
+        services: recon.services,
+        selectedServiceIndex: serviceIndex,
+        selectedServiceAnalysis: selectedService.aiml_analysis || null,
+      },
+    });
+  };
 
   useEffect(() => {
     const fetchReconDetail = async () => {
@@ -128,11 +148,11 @@ const ReconHistoryDetailPage = () => {
         </div>
 
         {/* Info Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[#1a1714] p-4 rounded-lg">
+        <div className="grid grid-cols-3 md:grid-cols-3 gap-3">
+          {/* <div className="bg-[#1a1714] p-4 rounded-lg">
             <p className="text-sm text-gray-400">Mode</p>
             <p className="text-lg font-medium">{recon.mode || "-"}</p>
-          </div>
+          </div> */}
           <div className="bg-[#1a1714] p-4 rounded-lg">
             <p className="text-sm text-gray-400">Execution Time</p>
             <p className="text-lg font-medium">{recon.exec_time || "-"}</p>
@@ -189,11 +209,12 @@ const ReconHistoryDetailPage = () => {
                       <td className="p-4">{service.product || "-"}</td>
                       <td className="p-4">{service.version || "-"}</td>
                       <td className="p-4">
-                        {
-                          <div className="p-2 h-10 w-10 justify-center items-center flex rounded-lg border border-gray-700/50 bg-transparent hover:border-gray-600 hover:bg-gray-800/80 transition-all shadow-lg cursor-pointer">
-                            <ArrowRight className="w-5 h-5" />
-                          </div>
-                        }
+                        <div
+                          onClick={() => handleServiceArrowClick(index)}
+                          className="p-2 h-10 w-10 justify-center items-center flex rounded-lg border border-gray-700/50 bg-transparent hover:border-gray-600 hover:bg-gray-800/80 transition-all shadow-lg cursor-pointer"
+                        >
+                          <ArrowRight className="w-5 h-5" />
+                        </div>
                       </td>
                     </tr>
                   ))}
