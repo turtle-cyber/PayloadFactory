@@ -180,7 +180,15 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
             file_name = os.path.basename(file_path)
             processed_locations = set() # Track unique locations to prevent duplicates
             
+            scan_log(f"📋 Processing {len(vulnerabilities)} vulnerabilities in {file_name}")
+            
             for i, vuln in enumerate(vulnerabilities):
+                # DIAGNOSTIC: Log details of each vulnerability
+                vuln_cwe = vuln.get('cwe') or vuln.get('classification', {}).get('cwe', 'N/A')
+                vuln_type = vuln.get('type') or vuln.get('classification', {}).get('type', 'N/A')
+                vuln_confidence = vuln.get('confidence', 0)
+                scan_log(f"  [{i+1}/{len(vulnerabilities)}] CWE: {vuln_cwe}, Type: {vuln_type}, Confidence: {vuln_confidence:.2f}")
+                
                 # DEDUPLICATION: Check if we already processed this location/chunk
                 vuln_loc = vuln.get('location', '')
                 vuln_chunk = vuln.get('vulnerable_chunk', '')
@@ -208,19 +216,21 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                     vuln['classification'] = classification
                     logger.info(f"  -> CWE: {classification.get('cwe', 'N/A')}")
                     
-                    # REAL-TIME SAVE: Persist the classification immediately
+                    # Save intermediate file
                     try:
-                        # We need to update the specific finding in the main list
-                        # Since 'vulnerabilities' is a reference to the list inside 'all_findings',
-                        # modifying 'vuln' (dict) updates the main list.
-                        # We just need to dump 'all_findings' to disk.
                         if all_findings:
                             with open(intermediate_file, 'w', encoding='utf-8') as f:
                                 json.dump(all_findings, f, indent=4, ensure_ascii=False)
+                    except Exception as save_err:
+                        logger.error(f"Failed to save intermediate findings: {save_err}")
+                
+                # --- ALWAYS SAVE TO DB (Fix: Moved outside the classification block) ---
+                # This ensures finding_id is set for ALL vulnerabilities, enabling exploit linking
+                if vuln.get('finding_id') is None:
+                    try:
+                        classification = vuln.get('classification', {})
                         
-                        # DB SAVE (Update)
-                        # We need to save the specific finding.
-                        # Extract line number from location string (e.g., "Line 45" or "Token Offset...")
+                        # Extract line number from location string
                         line_number = 0
                         loc_str = vuln.get('location', '')
                         if 'Line' in loc_str:
@@ -228,8 +238,7 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                                 line_number = int(loc_str.split('Line')[1].strip().split()[0])
                             except: pass
                         
-                        # Prepare enhanced finding data
-                        # Handle both nested and top-level field formats
+                        # Prepare finding data
                         vuln_data = {
                             'file_path': file_path,
                             'file_name': file_name,
@@ -243,12 +252,13 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                             'stage': 2
                         }
                         
-                        # Save and get finding_id
+                        # Save and get finding_id - CRITICAL for exploit linking
                         finding_id = db_manager.save_finding(vuln_data, scan_id=scan_id, file_id=file_id)
-                        vuln['finding_id'] = finding_id # Store for exploit linkage
+                        vuln['finding_id'] = finding_id
+                        logger.debug(f"Finding saved with ID: {finding_id}")
                         
                     except Exception as save_err:
-                        logger.error(f"Failed to save intermediate findings/db: {save_err}")
+                        logger.error(f"Failed to save finding to DB: {save_err}")
 
                 # Check if we should generate exploit
                 # Handle both formats: classification nested or top-level CVE fields
@@ -256,20 +266,79 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                 # Try classification first, then fall back to top-level fields
                 cwe = classification.get('cwe') or vuln.get('cwe', 'Unknown')
                 
-                # Skip if Safe or Unknown (without strong vuln indicators)
-                # STRICTER CHECK: If CWE is Unknown, we only proceed if type is explicitly "Potential Vulnerability"
-                # AND the details don't look like a false positive.
+                # ONLY skip if explicitly marked as Safe (not a vulnerability)
+                # For Unknown/Unclassified CWEs, we still attempt exploit generation
+                # because the scanner detected something suspicious
                 if cwe == 'Safe':
                     logger.info(f"Skipping exploit generation for {file_name} (Classified as Safe)")
                     continue
                 
-                if cwe == 'Unknown':
-                    # Check type in both locations
+                # For Unknown/Unclassified CWEs, try to infer from vulnerability type
+                if cwe in ['Unknown', 'Unclassified', 'Unverified', None, '']:
                     vuln_type = classification.get('type') or vuln.get('type', '')
-                    if 'Potential Vulnerability' not in vuln_type:
-                        logger.info(f"Skipping exploit generation for {file_name} (Classified as Unknown/Safe)")
-                        continue
-                    # Optional: Add more heuristics here if needed
+                    # Map common vulnerability types to CWEs for better exploit generation
+                    type_to_cwe = {
+                        # Injection
+                        'sql': 'CWE-89',
+                        'injection': 'CWE-89', 
+                        'command': 'CWE-78',
+                        'os command': 'CWE-78',
+                        'ldap': 'CWE-90',
+                        'xpath': 'CWE-643',
+                        'expression': 'CWE-917',
+                        'el injection': 'CWE-917',
+                        'template': 'CWE-1336',
+                        # XSS & Path issues
+                        'path traversal': 'CWE-22',
+                        'directory traversal': 'CWE-22',
+                        'xss': 'CWE-79',
+                        'cross-site': 'CWE-79',
+                        'script': 'CWE-79',
+                        # Memory
+                        'buffer': 'CWE-119',
+                        'overflow': 'CWE-119',
+                        'heap': 'CWE-122',
+                        'stack': 'CWE-121',
+                        'use after free': 'CWE-416',
+                        'format string': 'CWE-134',
+                        # Deserialization & XXE
+                        'deserial': 'CWE-502',
+                        'object': 'CWE-502',
+                        'readobject': 'CWE-502',
+                        'xxe': 'CWE-611',
+                        'xml external': 'CWE-611',
+                        'ssrf': 'CWE-918',
+                        # Tomcat-specific
+                        'session fixation': 'CWE-384',
+                        'session': 'CWE-384',
+                        'file upload': 'CWE-434',
+                        'upload': 'CWE-434',
+                        'ajp': 'CWE-284',
+                        'ghostcat': 'CWE-284',
+                        'redirect': 'CWE-601',
+                        'open redirect': 'CWE-601',
+                        'toctou': 'CWE-367',
+                        'race condition': 'CWE-367',
+                        'crlf': 'CWE-113',
+                        'response splitting': 'CWE-113',
+                        'authentication bypass': 'CWE-287',
+                        'auth bypass': 'CWE-287',
+                        'access control': 'CWE-284',
+                        'manager': 'CWE-200',
+                        'credential': 'CWE-798',
+                        'hardcoded': 'CWE-798',
+                    }
+                    vuln_type_lower = vuln_type.lower()
+                    for keyword, mapped_cwe in type_to_cwe.items():
+                        if keyword in vuln_type_lower:
+                            cwe = mapped_cwe
+                            logger.info(f"Inferred CWE {cwe} from vuln type: {vuln_type}")
+                            break
+                    
+                    # If still unknown, use generic web vuln CWE
+                    if cwe in ['Unknown', 'Unclassified', 'Unverified', None, '']:
+                        cwe = 'CWE-94'  # Code Injection (generic)
+                        logger.info(f"Using generic CWE-94 for unclassified finding in {file_name}")
                     
                 logger.info(f"Generating exploit for: {file_name} (CWE: {cwe})")
                 
@@ -365,7 +434,10 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                             logger.info(f"Exploit generated. Queued for Stage 3 execution: {exploit_filename}")
                         
                     else:
-                        logger.error(f"Enhanced generation failed, attempting standard fallback...")
+                        # DIAGNOSTIC: Log why exploit generation failed
+                        reason = exploit_result.get('reason', 'Unknown reason')
+                        scan_log(f"❌ Exploit generation failed for {file_name} ({cwe}): {reason}")
+                        logger.error(f"Enhanced generation failed: {reason}, attempting standard fallback...")
                         
                         # FALLBACK MECHANISM
                         fallback_exploit = exploit_gen.generate_exploit(vuln)
@@ -516,6 +588,23 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                     # Clear cache even on error
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
+
+        # ========== STAGE 2 COMPLETION SUMMARY ==========
+        scan_log("=" * 50)
+        scan_log("STAGE 2 COMPLETE")
+        scan_log(f"🎯 Total findings processed: {len(all_findings)}")
+        scan_log(f"📄 Other files scanned: {len(other_files)}")
+        scan_log(f"💣 Exploits generated: {exploits_generated_count}")
+        scan_log("=" * 50)
+        
+        # Update final progress in DB
+        if scan_id:
+            try:
+                db_manager.update_scan_progress(scan_id, {
+                    "progress.exploits_generated": exploits_generated_count
+                })
+            except:
+                pass
 
         # Cleanup
         del vuln_scanner

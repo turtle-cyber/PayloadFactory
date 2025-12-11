@@ -302,6 +302,10 @@ class PayloadFactoryApp(ctk.CTk):
         selected_model = model_map.get(self.model_var.get(), "hermes")
         cmd.extend(["--model", selected_model])
         
+        # Propagate Recon Scan ID for linking
+        if hasattr(self, 'current_recon_scan_id') and self.current_recon_scan_id:
+            cmd.extend(["--recon-scan-id", self.current_recon_scan_id])
+        
         try:
             # Force UTF-8 encoding for the subprocess output
             env = os.environ.copy()
@@ -409,12 +413,16 @@ class PayloadFactoryApp(ctk.CTk):
         self.net_input_frame = ctk.CTkFrame(self.network_tab, fg_color="transparent")
         self.net_input_frame.pack(fill="x", pady=10)
         
+        ctk.CTkLabel(self.net_input_frame, text="Scan Name:", font=ctk.CTkFont(size=14)).pack(side="left", padx=(0, 5))
+        self.net_name_entry = ctk.CTkEntry(self.net_input_frame, width=150, placeholder_text="My Recon Scan")
+        self.net_name_entry.pack(side="left", padx=(0, 15))
+        
         ctk.CTkLabel(self.net_input_frame, text="Target IP:", font=ctk.CTkFont(size=14)).pack(side="left", padx=(0, 5))
         self.net_ip_entry = ctk.CTkEntry(self.net_input_frame, width=150, placeholder_text="192.168.1.100")
         self.net_ip_entry.pack(side="left", padx=(0, 15))
         
         ctk.CTkLabel(self.net_input_frame, text="Ports:", font=ctk.CTkFont(size=14)).pack(side="left", padx=(0, 5))
-        self.net_ports_entry = ctk.CTkEntry(self.net_input_frame, width=200, placeholder_text="1-1000 or 80,443,8080")
+        self.net_ports_entry = ctk.CTkEntry(self.net_input_frame, width=180, placeholder_text="1-1000 or 80,443,8080")
         self.net_ports_entry.insert(0, "21,22,80,443,3306,8080")
         self.net_ports_entry.pack(side="left", padx=(0, 15))
         
@@ -507,9 +515,10 @@ class PayloadFactoryApp(ctk.CTk):
             self.net_source_entry.insert(0, folder)
     
     def run_network_scan(self):
-        """Run network scan and LLM analysis."""
+        """Run network scan and LLM analysis, saving results to MongoDB."""
         ip = self.net_ip_entry.get().strip()
         ports = self.net_ports_entry.get().strip()
+        scan_name = self.net_name_entry.get().strip() or None
         
         if not ip:
             self._update_net_services("Error: Please enter a target IP address.")
@@ -519,9 +528,20 @@ class PayloadFactoryApp(ctk.CTk):
         self._update_net_services(f"Scanning {ip}:{ports}...\n")
         self._update_net_analysis("Waiting for scan to complete...")
         
+        # Store current recon scan ID for linking to vulnerability scans
+        self.current_recon_scan_id = None
+        
         def scan_thread():
             try:
                 from ml_engine.network_scanner import NetworkScanner
+                from ml_engine.db_manager import DatabaseManager
+                from dataclasses import asdict
+                
+                # Initialize database and create recon scan record
+                db = DatabaseManager()
+                mode = self.net_mode_var.get()  # "whitebox" or "blackbox"
+                recon_scan_id = db.create_recon_scan(ip, mode, scan_name)
+                self.current_recon_scan_id = recon_scan_id
                 
                 # Parse ports
                 port_list = None
@@ -538,7 +558,30 @@ class PayloadFactoryApp(ctk.CTk):
                 # scan_target now returns ScanResult - extract services list
                 results = scan_result.services if hasattr(scan_result, 'services') else scan_result
                 
-                # Format results
+                # Convert services to dict format for MongoDB
+                service_dicts = []
+                for svc in results:
+                    if hasattr(svc, '__dataclass_fields__'):
+                        svc_dict = asdict(svc)
+                    elif hasattr(svc, '__dict__'):
+                        svc_dict = svc.__dict__.copy()
+                    else:
+                        svc_dict = svc
+                    service_dicts.append(svc_dict)
+                
+                # Convert OS info to dict
+                os_info_dict = None
+                if hasattr(scan_result, 'os_info') and scan_result.os_info:
+                    if hasattr(scan_result.os_info, '__dataclass_fields__'):
+                        os_info_dict = asdict(scan_result.os_info)
+                    elif hasattr(scan_result.os_info, '__dict__'):
+                        os_info_dict = scan_result.os_info.__dict__.copy()
+                
+                # Save services and OS info to MongoDB
+                if recon_scan_id:
+                    db.update_recon_services(recon_scan_id, service_dicts, os_info_dict)
+                
+                # Format results for display
                 output_lines = []
                 
                 # Add OS info if available
@@ -559,29 +602,26 @@ class PayloadFactoryApp(ctk.CTk):
                 # Run LLM analysis
                 self.after(0, lambda: self._update_net_analysis("Running LLM analysis... (this may take a moment)"))
 
-                # Get the most recent scan_id from database to pull CVEs
-                scan_id = None
-                try:
-                    from ml_engine.db_manager import DatabaseManager
-                    db = DatabaseManager()
-                    # Get the most recent scan
-                    latest_scan = db.get_latest_scan()
-                    if latest_scan:
-                        scan_id = latest_scan.get('_id')
-                except Exception as e:
-                    print(f"Could not get scan_id: {e}")
-
                 from ml_engine.service_analyzer import ServiceAnalyzer
-                analyzer = ServiceAnalyzer(model_id="hermes", scan_id=str(scan_id) if scan_id else None)
+                analyzer = ServiceAnalyzer(model_id="hermes", scan_id=recon_scan_id)
                 
                 analysis_output = []
                 for svc in results:
                     svc_dict = svc.__dict__ if hasattr(svc, '__dict__') else svc
                     analysis = analyzer.analyze_service(svc_dict)
-                    analysis_output.append(analyzer.format_analysis(analysis))
+                    formatted_analysis = analyzer.format_analysis(analysis)
+                    analysis_output.append(formatted_analysis)
+                    
+                    # Save AIML analysis to MongoDB for this service
+                    if recon_scan_id and svc_dict.get('port'):
+                        db.update_recon_service_analysis(recon_scan_id, svc_dict['port'], formatted_analysis)
                 
                 if not analysis_output:
                     analysis_output = ["No services to analyze."]
+                
+                # Mark recon scan as completed
+                if recon_scan_id:
+                    db.complete_recon_scan(recon_scan_id)
                 
                 self.after(0, lambda: self._update_net_analysis("\n\n".join(analysis_output)))
                 
@@ -639,6 +679,10 @@ class PayloadFactoryApp(ctk.CTk):
             self.log(f"--- Target: {ip} ---")
             
             # UX Improvement: Auto-start or prompt
+            # Log recon scan link for traceability
+            if hasattr(self, 'current_recon_scan_id') and self.current_recon_scan_id:
+                self.log(f"--- Linked to Recon Scan: {self.current_recon_scan_id} ---")
+            
             self.log(">>> Settings Populated from Network Scan. Click 'Start Scan' to begin! <<<")
         else:
             # Blackbox mode - run CVE matching + exploit lookup + fuzzing

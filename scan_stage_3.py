@@ -9,7 +9,7 @@ import glob
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "ml_engine")))
 from ml_engine.fuzzing_module import Fuzzer
 from ml_engine.rl_agent import RLAgent
-from ml_engine.spider_module import WebSpider
+# WebSpider removed - endpoints now come from exploit code or default paths
 from ml_engine.logger_config import setup_logger
 from ml_engine.feedback_context import FeedbackContext
 from ml_engine.exploit_executor import ExploitExecutor, ExploitResult
@@ -103,14 +103,14 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
     exploit_executor = None
     if auto_execute and remote_host:
         exploit_executor = ExploitExecutor(timeout=30, use_listener=False)
-        logger.info("ExploitExecutor initialized for auto-execution")
+        scan_log("ExploitExecutor initialized for auto-execution")
     
     # --- TOMCAT DIRECT ATTACK MODE ---
     tomcat_paths = []
     if tomcat_direct and remote_host and remote_port:
-        logger.info("="*50)
-        logger.info("TOMCAT DIRECT ATTACK PHASE")
-        logger.info("="*50)
+        scan_log("="*50)
+        scan_log("TOMCAT DIRECT ATTACK PHASE")
+        scan_log("="*50)
         try:
             from ml_engine.tomcat_scanner import TomcatScanner
             from ml_engine.tomcat_targets import get_all_attack_paths
@@ -122,38 +122,38 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
             # Use Tomcat-specific paths instead of spider
             tomcat_paths = get_all_attack_paths()
             fuzzer.set_paths(tomcat_paths)
-            logger.info(f"Loaded {len(tomcat_paths)} Tomcat attack paths")
+            scan_log(f"Loaded {len(tomcat_paths)} Tomcat attack paths")
             
             # If credentials found, log critical
             if results.get("credentials"):
-                logger.critical(f"CREDENTIALS FOUND: {results['credentials']}")
+                scan_log(f"CREDENTIALS FOUND: {results['credentials']}", "warning")
             
             # If vulnerabilities found, continue with enhanced fuzzing
             if results.get("vulnerabilities"):
                 for vuln in results["vulnerabilities"]:
-                    logger.critical(f"VULNERABILITY: {vuln}")
+                    scan_log(f"VULNERABILITY: {vuln}", "warning")
                     
         except Exception as e:
-            logger.warning(f"Tomcat scanner failed: {e}. Falling back to spider.")
-            tomcat_direct = False  # Fallback to spider
+            scan_log(f"Tomcat scanner failed: {e}. Using default paths.", "warning")
+            tomcat_direct = False
     
-    # --- SPIDER MODULE INTEGRATION (fallback or default) ---
+    # --- ENDPOINT DISCOVERY (No Spider - use exploit metadata or defaults) ---
+    # Spider removed - endpoints are already embedded in Stage 2 exploit code
+    # or we use well-known attack paths based on target type
     discovered_paths = []
     if not tomcat_direct and remote_host and remote_port:
-        target_url = f"{remote_host}:{remote_port}"
-        logger.info(f"Running Spider on {target_url} to find endpoints...")
-        try:
-            spider = WebSpider(target_url)
-            spider.crawl()
-            discovered_paths = spider.get_paths()
-            logger.info(f"Spider found {len(discovered_paths)} endpoints: {discovered_paths}")
-            
-            # Update Fuzzer with discovered paths
-            fuzzer.set_paths(discovered_paths)
-        except Exception as e:
-            logger.warning(f"Spider failed: {e}")
+        # Use common web attack paths instead of spidering
+        # These are generic paths likely to exist on most web servers
+        discovered_paths = [
+            "/", "/admin", "/login", "/api", "/manager", "/console",
+            "/admin.php", "/index.php", "/upload", "/files",
+            "/manager/html", "/manager/text", "/host-manager",
+            "/status", "/jmxrmi", "/invoker/JMXInvokerServlet"
+        ]
+        fuzzer.set_paths(discovered_paths)
+        scan_log(f"Using {len(discovered_paths)} default attack paths (Spider removed)")
     elif tomcat_paths:
-        discovered_paths = tomcat_paths  # Use Tomcat paths for feedback context
+        discovered_paths = tomcat_paths
             
     # Initialize generator for lazy loading
     gen = None
@@ -180,7 +180,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                 attempt = 0
                 while attempt <= max_retries:
                     attempt += 1
-                    logger.info(f"  -> Running Fuzzer (Attempt {attempt}/{max_retries})...")
+                    scan_log(f"  -> Running Fuzzer (Attempt {attempt}/{max_retries})...")
                     
                     # Load payload (re-load in case it was regenerated)
                     if os.path.exists(payload_file):
@@ -206,7 +206,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                                 # Extract Date if present
                                 if "Date:" in err:
                                     date_str = err.split("Date: ")[1].strip(")")
-                                    logger.info(f"  -> [!!!] SYSTEM INFILTRATED. Server Time: {date_str}")
+                                    scan_log(f"  -> [!!!] SYSTEM INFILTRATED. Server Time: {date_str}", "warning")
                             else:
                                 finding_types.add("Crash/Error")
                         
@@ -216,14 +216,14 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     
                     # If no crashes and we have retries left, REGENERATE
                     if attempt < max_retries and remote_host:
-                        logger.warning("  -> Fuzzing failed (0 crashes). Initiating Self-Healing...")
+                        scan_log("  -> Fuzzing failed (0 crashes). Initiating Self-Healing...", "warning")
                         
                         # INTELLIGENT LOOP: Pick a relevant path if available
                         target_path = None
                         if discovered_paths:
                             import random
                             target_path = random.choice(discovered_paths)
-                            logger.info(f"  -> Intelligent Loop: Guiding LLM to target {target_path}")
+                            scan_log(f"  -> Intelligent Loop: Guiding LLM to target {target_path}")
 
                         # Lazy load generator only if needed
                         if gen is None:
@@ -247,8 +247,8 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                             ast.parse(new_code)
                             is_valid = True
                         except SyntaxError as e:
-                            logger.warning(f"  -> LLM generated invalid Python! Syntax error: {e}")
-                            logger.warning("  -> Keeping original exploit, only mutating payload...")
+                            scan_log(f"  -> LLM generated invalid Python! Syntax error: {e}", "warning")
+                            scan_log("  -> Keeping original exploit, only mutating payload...", "warning")
                         
                         if is_valid:
                             # Additional sanity check: must contain 'import' and 'target'
@@ -263,13 +263,13 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                                 with open(payload_file, 'wb') as pf:
                                     pf.write(new_payload)
                                     
-                                logger.info("  -> Exploit regenerated and saved. Retrying...")
+                                scan_log("  -> Exploit regenerated and saved. Retrying...")
                                 exploit_code = new_code # Update for next loop
                             else:
-                                logger.warning("  -> LLM output missing key elements. Keeping original.")
+                                scan_log("  -> LLM output missing key elements. Keeping original.", "warning")
                         else:
                             # If LLM failed, just mutate the payload instead
-                            logger.info("  -> Mutating existing payload instead of regenerating...")
+                            scan_log("  -> Mutating existing payload instead of regenerating...")
                             mutated = fuzzer.mutate_payload(base_payload)
                             with open(payload_file, 'wb') as pf:
                                 pf.write(mutated)
@@ -287,7 +287,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                 )
                 
                 # 3. RL Optimization Phase (with shared Fuzzer and Feedback)
-                logger.info("  -> Running RL Agent with feedback context...")
+                scan_log("  -> Running RL Agent with feedback context...")
                 optimized_payload = rl_agent.optimize_exploit(
                     base_payload, 
                     iterations=20, 
@@ -301,7 +301,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                 validation_status = "UNTESTED"
                 validation_latency = 0.0
                 if remote_host:
-                    logger.info("  -> Validating optimized payload...")
+                    scan_log("  -> Validating optimized payload...")
                     validation_result = fuzzer.send_payload(optimized_payload)
                     validation_latency = validation_result.get("time_ms", 0)
                     
@@ -318,7 +318,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     else:
                         validation_status = "NO_RESPONSE"
                     
-                    logger.info(f"  -> Validation: {validation_status} (Latency: {validation_latency:.1f}ms)")
+                    scan_log(f"  -> Validation: {validation_status} (Latency: {validation_latency:.1f}ms)")
                 
                 # Append optimization results to the exploit file as comments
                 with open(exploit_file, 'a', encoding='utf-8') as f:
@@ -332,7 +332,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     
                 # --- NEW: Inject Optimized Payload into Code ---
                 if len(optimized_payload) > 0:
-                    logger.info("  -> Injecting optimized payload into exploit script...")
+                    scan_log("  -> Injecting optimized payload into exploit script...")
                     # Simple heuristic: Look for 'payloads = [' or 'payload = '
                     # and try to insert the optimized one as the FIRST item.
                     
@@ -352,10 +352,10 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     if injected:
                         with open(exploit_file, 'w', encoding='utf-8') as f:
                             f.writelines(new_exploit_lines)
-                        logger.info("  -> Exploit script updated with optimized payload.")
+                        scan_log("  -> Exploit script updated with optimized payload.")
                     else:
                         # Fallback: If no list found, append a new one at the top or appropriate place
-                        logger.warning("  -> Could not find 'payloads = [' list. Appending new list...")
+                        scan_log("  -> Could not find 'payloads = [' list. Appending new list...", "warning")
                         
                         # Insert after imports (heuristic: look for 'import ' lines)
                         insert_idx = 0
@@ -372,16 +372,16 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                         
                         with open(exploit_file, 'w', encoding='utf-8') as f:
                             f.writelines(new_lines)
-                        logger.info("  -> Created new 'payloads' list with optimized payload.")
+                        scan_log("  -> Created new 'payloads' list with optimized payload.")
 
                 scan_log(f"  -> Optimization complete for {file_name}")
                 
                 # --- EXPLOIT EXECUTION PHASE ---
                 if exploit_executor and remote_host:
-                    logger.info("="*50)
-                    logger.info("EXPLOIT EXECUTION PHASE")
-                    logger.info("="*50)
-                    logger.info(f"  -> Executing exploit: {file_name}")
+                    scan_log("="*50)
+                    scan_log("EXPLOIT EXECUTION PHASE")
+                    scan_log("="*50)
+                    scan_log(f"  -> Executing exploit: {file_name}")
                     
                     exec_result = exploit_executor.execute_exploit(
                         exploit_file, 
@@ -390,23 +390,23 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     )
                     
                     if exec_result.rce_detected:
-                        logger.critical(f"  -> *** RCE SUCCESSFUL! *** Exploit: {file_name}")
-                        logger.critical(f"  -> Output: {exec_result.output[:500] if exec_result.output else 'N/A'}")
+                        scan_log(f"  -> *** RCE SUCCESSFUL! *** Exploit: {file_name}", "warning")
+                        scan_log(f"  -> Output: {exec_result.output[:500] if exec_result.output else 'N/A'}", "warning")
                         # Append RCE confirmation to exploit file
                         with open(exploit_file, 'a', encoding='utf-8') as f:
                             f.write(f"\n# *** RCE CONFIRMED on {remote_host}:{remote_port} ***\n")
                     elif exec_result.dos_detected:
-                        logger.warning(f"  -> DoS detected: {file_name}")
+                        scan_log(f"  -> DoS detected: {file_name}", "warning")
                     elif exec_result.success:
-                        logger.info(f"  -> Exploit executed successfully: {file_name}")
-                        logger.info(f"  -> Output: {exec_result.output[:200] if exec_result.output else 'N/A'}")
+                        scan_log(f"  -> Exploit executed successfully: {file_name}")
+                        scan_log(f"  -> Output: {exec_result.output[:200] if exec_result.output else 'N/A'}")
                     else:
-                        logger.warning(f"  -> Exploit execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}")
+                        scan_log(f"  -> Exploit execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}", "error")
                 
                 if not infinite:
                     break
                 else:
-                    logger.info("  -> Infinite Mode: Restarting cycle with new optimized payload...")
+                    scan_log("  -> Infinite Mode: Restarting cycle with new optimized payload...")
                     # Update base_payload for next cycle
                     base_payload = optimized_payload
                     # Update payload file
@@ -414,7 +414,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                         pf.write(base_payload)
 
         except Exception as e:
-            logger.error(f"Error optimizing {file_name}: {e}")
+            scan_log(f"Error optimizing {file_name}: {e}", "error")
 
     scan_log("Stage 3 Complete.")
 

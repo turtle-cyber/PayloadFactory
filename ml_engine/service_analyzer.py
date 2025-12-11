@@ -673,7 +673,7 @@ Output ONLY the JSON object, no explanations."""
                 "vulnerable_versions": ["8.5.0-8.5.78", "9.0.0-9.0.62", "10.0.0-10.0.20"],
                 "install_commands": [
                     "apt-get update && apt-get install -y openjdk-11-jdk",
-                    f"wget https://archive.apache.org/dist/tomcat/tomcat-9/v{version}/bin/apache-tomcat-{version}.tar.gz" if version != 'unknown' else "# Download specific version from Apache archives",
+                    f"wget https://archive.apache.org/dist/tomcat/tomcat-{version.split('.')[0] if version != 'unknown' else '9'}/v{version}/bin/apache-tomcat-{version}.tar.gz" if version != 'unknown' else "# Download specific version from Apache archives",
                     "tar -xzf apache-tomcat-*.tar.gz -C /opt/",
                     "chmod +x /opt/apache-tomcat-*/bin/*.sh"
                 ],

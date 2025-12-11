@@ -201,8 +201,6 @@ Code:
         
         return []
 
-        return vulnerabilities
-
     def _remove_comments(self, text):
         """
         Removes C-style comments (// and /* */) from the code.
@@ -370,9 +368,9 @@ Code:
                             "vulnerable_chunk": chunk_text
                         }
                         
-                        # PATTERN-BASED CWE CLASSIFICATION (Stage 1)
-                        from ml_engine.cve_database import classify_by_pattern
-                        pattern_result = classify_by_pattern(chunk_text, file_path)
+                        # PATTERN-BASED + HEURISTIC CWE CLASSIFICATION (Stage 1)
+                        from ml_engine.cve_database import classify_with_fallback
+                        pattern_result = classify_with_fallback(chunk_text, file_path)
                         if pattern_result:
                             new_finding["cwe"] = pattern_result["cwe"]
                             new_finding["type"] = pattern_result["type"]
@@ -456,12 +454,12 @@ Code:
             paranoid_mode: Enable paranoid mode for stricter analysis
             file_path: Path to the file being analyzed (used for extension-based pattern matching)
         """
-        from ml_engine.cve_database import classify_by_pattern
+        from ml_engine.cve_database import classify_with_fallback
 
         # =====================================================================
-        # STEP 1: Pattern-Based Classification (Preferred - 100% Accurate)
+        # STEP 1: Pattern + Heuristic Classification (Preferred - Accurate)
         # =====================================================================
-        pattern_result = classify_by_pattern(code_snippet, file_path)
+        pattern_result = classify_with_fallback(code_snippet, file_path)
         
         if pattern_result:
             logger.info(f"[PATTERN] Verified classification: {pattern_result['type']} ({pattern_result['cwe']})")

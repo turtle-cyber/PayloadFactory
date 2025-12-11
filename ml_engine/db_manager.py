@@ -33,8 +33,15 @@ class DatabaseManager:
         else:
             logger.warning("pymongo not installed. Database features disabled.")
 
-    def create_scan(self, project_name, root_path, file_size=0):
-        """Creates a new scan record and returns the scan_id."""
+    def create_scan(self, project_name, root_path, file_size=0, recon_scan_id=None):
+        """Creates a new scan record and returns the scan_id.
+        
+        Args:
+            project_name: Name of the project being scanned
+            root_path: Root path of the source code
+            file_size: Total file size in bytes
+            recon_scan_id: Optional recon scan ID to link this vulnerability scan to
+        """
         if not self.connected: return None
         
         try:
@@ -42,6 +49,7 @@ class DatabaseManager:
             scan_doc = {
                 'project_name': project_name,
                 'root_path': root_path,
+                'recon_scan_id': recon_scan_id,  # Link to recon scan
                 'status': 'processing',
                 'stats': {
                     'total_files': 0,
@@ -120,7 +128,7 @@ class DatabaseManager:
                 'owasp_category': finding.get('owasp_category'),
                 'details': finding.get('details'),
                 'timestamp': datetime.utcnow(),
-                'exploits': [] # Initialize empty exploits list
+                # NOTE: Don't include 'exploits' here - it would overwrite existing exploits on update
             }
 
             # Use finding_id as unique key
@@ -130,7 +138,16 @@ class DatabaseManager:
             if not scan_id:
                 key = {'file_path': finding.get('file_path'), 'location': finding.get('location')}
 
-            collection.update_one(key, {'$set': finding_doc}, upsert=True)
+            # Use $set for fields and $setOnInsert for exploits initialization
+            # This preserves existing exploits on update while initializing on new insert
+            collection.update_one(
+                key, 
+                {
+                    '$set': finding_doc,
+                    '$setOnInsert': {'exploits': []}  # Only set exploits on first insert
+                }, 
+                upsert=True
+            )
             logger.debug(f"Saved finding to MongoDB: {finding.get('file_name')} (ID: {finding.get('finding_id')})")
             
             # Update stats if scan_id is present
@@ -272,6 +289,162 @@ class DatabaseManager:
             self.connected = False
             logger.info("MongoDB connection closed.")
 
+    # ========== RECON COLLECTION METHODS ==========
+    
+    def create_recon_scan(self, target_ip: str, mode: str = "blackbox", scan_name: str = None):
+        """Creates a new reconnaissance scan record and returns the recon_scan_id.
+        
+        Args:
+            target_ip: Target IP address being scanned
+            mode: "blackbox" or "whitebox"
+            scan_name: User-defined name for this scan (optional)
+            
+        Returns:
+            recon_scan_id string or None if failed
+        """
+        if not self.connected:
+            return None
+        
+        try:
+            import uuid
+            collection = self.db['recon']
+            recon_doc = {
+                'scan_id': f"recon_{uuid.uuid4().hex[:12]}",
+                'scan_name': scan_name or f"Recon_{target_ip}",
+                'target_ip': target_ip,
+                'timestamp': datetime.utcnow(),
+                'os_info': {
+                    'name': 'Unknown',
+                    'accuracy': 0,
+                    'family': 'Unknown',
+                    'vendor': 'Unknown',
+                    'os_gen': 'Unknown'
+                },
+                'services': [],
+                'mode': mode,
+                'status': 'in_progress'
+            }
+            result = collection.insert_one(recon_doc)
+            logger.info(f"Created recon scan: {recon_doc['scan_id']}")
+            return recon_doc['scan_id']
+        except Exception as e:
+            logger.error(f"Failed to create recon scan: {e}")
+            return None
+
+    def update_recon_services(self, recon_scan_id: str, services: list, os_info: dict = None):
+        """Updates a recon scan with discovered services and OS info.
+        
+        Args:
+            recon_scan_id: The recon scan ID
+            services: List of service dicts from NetworkScanner
+            os_info: OS information dict
+        """
+        if not self.connected or not recon_scan_id:
+            return
+        
+        try:
+            collection = self.db['recon']
+            update_data = {
+                'services': services,
+                'scan_time': datetime.utcnow()
+            }
+            if os_info:
+                update_data['os_info'] = os_info
+            
+            collection.update_one(
+                {'scan_id': recon_scan_id},
+                {'$set': update_data}
+            )
+            logger.info(f"Updated recon {recon_scan_id} with {len(services)} services")
+        except Exception as e:
+            logger.error(f"Failed to update recon services: {e}")
+
+    def update_recon_service_analysis(self, recon_scan_id: str, port: int, analysis: str):
+        """Updates a specific service with AIML analysis.
+        
+        Args:
+            recon_scan_id: The recon scan ID
+            port: Port number of the service to update
+            analysis: AIML generated analysis/guide
+        """
+        if not self.connected or not recon_scan_id:
+            return
+        
+        try:
+            collection = self.db['recon']
+            # Update the specific service in the services array
+            collection.update_one(
+                {'scan_id': recon_scan_id, 'services.port': port},
+                {'$set': {'services.$.aiml_analysis': analysis}}
+            )
+            logger.debug(f"Updated recon service analysis for port {port}")
+        except Exception as e:
+            logger.error(f"Failed to update service analysis: {e}")
+
+    def complete_recon_scan(self, recon_scan_id: str):
+        """Marks a recon scan as completed."""
+        if not self.connected or not recon_scan_id:
+            return
+        
+        try:
+            collection = self.db['recon']
+            collection.update_one(
+                {'scan_id': recon_scan_id},
+                {'$set': {
+                    'status': 'completed',
+                    'completed_at': datetime.utcnow()
+                }}
+            )
+            logger.info(f"Completed recon scan: {recon_scan_id}")
+        except Exception as e:
+            logger.error(f"Failed to complete recon scan: {e}")
+
+    def get_recon_scan(self, recon_scan_id: str):
+        """Retrieves a recon scan by its ID.
+        
+        Returns:
+            Recon document dict or None
+        """
+        if not self.connected or not recon_scan_id:
+            return None
+        
+        try:
+            collection = self.db['recon']
+            recon = collection.find_one({'scan_id': recon_scan_id})
+            if recon:
+                recon['_id'] = str(recon['_id'])
+            return recon
+        except Exception as e:
+            logger.error(f"Failed to get recon scan: {e}")
+            return None
+
+    def list_recon_scans(self, limit: int = 20, offset: int = 0):
+        """Lists all recon scans with pagination.
+        
+        Returns:
+            List of recon documents and total count
+        """
+        if not self.connected:
+            return [], 0
+        
+        try:
+            collection = self.db['recon']
+            total = collection.count_documents({})
+            scans = list(collection.find()
+                        .sort('timestamp', -1)
+                        .skip(offset)
+                        .limit(limit))
+            
+            for scan in scans:
+                scan['_id'] = str(scan['_id'])
+                if 'timestamp' in scan:
+                    scan['timestamp'] = scan['timestamp'].isoformat()
+            
+            return scans, total
+        except Exception as e:
+            logger.error(f"Failed to list recon scans: {e}")
+            return [], 0
+
     def save_agent_log(self, log_data):
         """Saves a log entry from a remote agent."""
         if not self.connected: return
@@ -387,7 +560,7 @@ class DatabaseManager:
             # Or simpler: dropDatabase() but we might want to keep some config?
             # Safe approach: Delete all documents from known collections
             
-            collections = ['scans', 'files', 'findings', 'exploits', 'agent_logs']
+            collections = ['scans', 'files', 'findings', 'exploits', 'agent_logs', 'recon', 'scan_logs']
             
             for col_name in collections:
                 self.db[col_name].delete_many({})

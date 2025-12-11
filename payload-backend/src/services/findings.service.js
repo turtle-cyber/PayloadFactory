@@ -70,8 +70,14 @@ class FindingsService {
 
       return {
         severity,
-        cwe: finding.cwe_id || "Unknown",
-        cve: finding.details.cve || "Unknown",
+        // Normalize CWE display - show actual CWE or 'Pending Analysis'
+        cwe: (finding.cwe_id && !['Unknown', 'Unclassified', 'Unverified', 'Safe'].includes(finding.cwe_id)) 
+          ? finding.cwe_id 
+          : 'Pending Analysis',
+        // Normalize CVE display
+        cve: (finding.details?.cve && !['Unknown', 'Unclassified', 'N/A'].includes(finding.details.cve))
+          ? finding.details.cve
+          : 'N/A',
         file: finding.file_name || "Unknown",
         file_path: finding.file_path || "Unknown",
         line: finding.line_number || 0,
