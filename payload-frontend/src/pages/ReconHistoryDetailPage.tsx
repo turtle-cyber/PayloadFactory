@@ -131,7 +131,7 @@ const ReconHistoryDetailPage = () => {
     <div className="overflow-auto text-white">
       <div className="max-w-6xl mx-auto space-y-6 px-6">
         {/* Header */}
-        <div className="py-2 px-4 rounded-lg bg-[#2f2f2f] flex items-center gap-4">
+        <div className="glassmorphism-card border border-red-600/20 py-2 px-4 rounded-lg flex items-center gap-4">
           <button
             onClick={() => navigate("/recon/history")}
             className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
@@ -139,7 +139,7 @@ const ReconHistoryDetailPage = () => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-semibold">{recon.scan_name}</h1>
+            <h1 className="text-lg">{recon.scan_name}</h1>
             <p className="text-sm text-gray-400">{recon.target_ip}</p>
           </div>
           <span className={formatStatus(recon.status)}>
@@ -153,22 +153,22 @@ const ReconHistoryDetailPage = () => {
             <p className="text-sm text-gray-400">Mode</p>
             <p className="text-lg font-medium">{recon.mode || "-"}</p>
           </div> */}
-          <div className="bg-[#1a1714] p-4 rounded-lg">
+          <div className="glassmorphism-card border border-red-600/20 p-4 rounded-lg">
             <p className="text-sm text-gray-400">Execution Time</p>
-            <p className="text-lg font-medium">{recon.exec_time || "-"}</p>
+            <p className="text-md font-medium">{recon.exec_time || "-"}</p>
           </div>
-          <div className="bg-[#1a1714] p-4 rounded-lg">
+          <div className="glassmorphism-card border border-red-600/20 p-4 rounded-lg">
             <p className="text-sm text-gray-400">Date</p>
-            <p className="text-lg font-medium">{recon.date || "-"}</p>
+            <p className="text-md font-medium">{recon.date || "-"}</p>
           </div>
-          <div className="bg-[#1a1714] p-4 rounded-lg">
+          <div className="glassmorphism-card border border-red-600/20 p-4 rounded-lg">
             <p className="text-sm text-gray-400">OS Detected</p>
-            <p className="text-lg font-medium">{recon.os_info?.name || "-"}</p>
+            <p className="text-md font-medium">{recon.os_info?.name || "-"}</p>
           </div>
         </div>
 
         {/* Services Table */}
-        <div className="bg-[#1a1714] p-4 rounded-lg">
+        <div className="glassmorphism-card p-4 rounded-lg border border-red-500/20 max-h-[70vh] overflow-auto">
           <h2 className="text-lg font-semibold mb-4">
             Services ({recon.services.length})
           </h2>
@@ -179,19 +179,19 @@ const ReconHistoryDetailPage = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-700">
-                    <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                    <th className="text-left p-4 text-sm text-gray-400">
                       Port
                     </th>
-                    <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                    <th className="text-left p-4 text-sm text-gray-400">
                       Protocol
                     </th>
-                    <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                    <th className="text-left p-4 text-sm text-gray-400">
                       Service
                     </th>
-                    <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                    <th className="text-left p-4 text-sm text-gray-400">
                       Product
                     </th>
-                    <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                    <th className="text-left p-4 text-sm text-gray-400">
                       Version
                     </th>
                   </tr>
@@ -203,17 +203,17 @@ const ReconHistoryDetailPage = () => {
                       key={index}
                       className="border-b border-gray-800 hover:bg-gray-900/50 transition-colors"
                     >
-                      <td className="p-4">{service.port}</td>
-                      <td className="p-4">{service.protocol}</td>
-                      <td className="p-4">{service.service}</td>
-                      <td className="p-4">{service.product || "-"}</td>
-                      <td className="p-4">{service.version || "-"}</td>
+                      <td className="p-4 text-sm">{service.port}</td>
+                      <td className="p-4 text-sm">{service.protocol}</td>
+                      <td className="p-4 text-sm">{service.service}</td>
+                      <td className="p-4 text-sm">{service.product || "-"}</td>
+                      <td className="p-4 text-sm">{service.version || "-"}</td>
                       <td className="p-4">
                         <div
                           onClick={() => handleServiceArrowClick(index)}
-                          className="p-2 h-10 w-10 justify-center items-center flex rounded-lg border border-gray-700/50 bg-transparent hover:border-gray-600 hover:bg-gray-800/80 transition-all shadow-lg cursor-pointer"
+                          className="flex p-1 w-10 align-center justify-center rounded-md border border-[#4b4b4b] text-[#4b4b4b] hover:border-red-500 hover:text-red-500 transition-colors"
                         >
-                          <ArrowRight className="w-5 h-5" />
+                          <ArrowRight className="w-5 h-5 " />
                         </div>
                       </td>
                     </tr>

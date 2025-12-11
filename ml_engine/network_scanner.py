@@ -351,12 +351,77 @@ class NetworkScanner:
                         )
                         services.append(svc)
             
-            self.logger.info(f"Scan complete. Found {len(services)} services.")
+            # Fallback OS detection from service banners when nmap OS detection fails
+            # This happens when running without admin/root privileges
+            if os_info.name == "Unknown" and services:
+                os_info = self._infer_os_from_services(services)
+            
+            self.logger.info(f"Scan complete. Found {len(services)} services. OS: {os_info.name}")
             return ScanResult(services=services, os_info=os_info)
 
         except Exception as e:
             self.logger.error(f"Nmap scan failed: {e}")
             return ScanResult(services=[], os_info=OSInfo())
+    
+    def _infer_os_from_services(self, services: List[ServiceInfo]) -> OSInfo:
+        """
+        Fallback: Infer OS from service banners and products.
+        This is used when nmap OS detection fails (non-admin mode).
+        """
+        # Combine all banners and products for pattern matching
+        all_text = ""
+        for svc in services:
+            all_text += f"{svc.product} {svc.banner} {svc.extra_info.get('extrainfo', '')} "
+        all_text = all_text.lower()
+        
+        # Linux detection patterns
+        linux_patterns = {
+            'ubuntu': ('Linux', 'Ubuntu', 'Canonical'),
+            'debian': ('Linux', 'Debian', 'Debian'),
+            'centos': ('Linux', 'CentOS', 'CentOS'),
+            'red hat': ('Linux', 'Red Hat', 'Red Hat'),
+            'fedora': ('Linux', 'Fedora', 'Fedora'),
+            'alpine': ('Linux', 'Alpine', 'Alpine'),
+            'arch': ('Linux', 'Arch', 'Arch'),
+            'linux': ('Linux', 'Linux', 'Unknown'),
+            'unix': ('Unix', 'Unix', 'Unknown'),
+        }
+        
+        # Windows detection patterns
+        windows_patterns = {
+            'windows server 2022': ('Windows', 'Windows Server', 'Microsoft', '2022'),
+            'windows server 2019': ('Windows', 'Windows Server', 'Microsoft', '2019'),
+            'windows server 2016': ('Windows', 'Windows Server', 'Microsoft', '2016'),
+            'windows 11': ('Windows', 'Windows', 'Microsoft', '11'),
+            'windows 10': ('Windows', 'Windows', 'Microsoft', '10'),
+            'windows': ('Windows', 'Windows', 'Microsoft'),
+            'win32': ('Windows', 'Windows', 'Microsoft'),
+            'win64': ('Windows', 'Windows', 'Microsoft'),
+            'microsoft': ('Windows', 'Windows', 'Microsoft'),
+        }
+        
+        # Check for Linux patterns
+        for pattern, (name, family, vendor) in linux_patterns.items():
+            if pattern in all_text:
+                return OSInfo(name=name, accuracy=60, family=family, vendor=vendor, os_gen="Unknown")
+        
+        # Check for Windows patterns
+        for pattern, values in windows_patterns.items():
+            if pattern in all_text:
+                if len(values) == 4:
+                    return OSInfo(name=values[0], accuracy=60, family=values[1], vendor=values[2], os_gen=values[3])
+                return OSInfo(name=values[0], accuracy=60, family=values[1], vendor=values[2], os_gen="Unknown")
+        
+        # Check for BSD
+        if 'freebsd' in all_text or 'openbsd' in all_text or 'netbsd' in all_text:
+            return OSInfo(name="BSD", accuracy=50, family="BSD", vendor="BSD", os_gen="Unknown")
+        
+        # Check for macOS
+        if 'macos' in all_text or 'darwin' in all_text or 'apple' in all_text:
+            return OSInfo(name="macOS", accuracy=50, family="macOS", vendor="Apple", os_gen="Unknown")
+        
+        # Default to Unknown
+        return OSInfo()
 
     def format_results(self, services: List[ServiceInfo]) -> str:
         """Format scan results as human-readable text."""

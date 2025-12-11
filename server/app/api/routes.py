@@ -378,9 +378,10 @@ async def whitebox_workflow(request: WhiteboxWorkflowRequest):
 
 @router.post("/network/scan")
 async def scan_network_target(request: NetworkScanRequest):
-    """Scan target IP for open ports and services."""
+    """Scan target IP for open ports and services, and save to database."""
     try:
         scanner = get_network_scanner()
+        db = get_db()
 
         # Parse ports: "80,443" or "1-1000" or "" for auto-detect
         port_list = None  # None = nmap auto-detect (quick scan)
@@ -393,14 +394,23 @@ async def scan_network_target(request: NetworkScanRequest):
         
         logger.info(f"Port scan mode: {'auto-detect (quick)' if port_list is None else f'{len(port_list)} ports'}")
 
+        # Create a recon scan record in the database
+        recon_scan_id = db.create_recon_scan(
+            target_ip=request.target_ip,
+            mode="network_scan",
+            scan_name=request.application_name or f"Scan_{request.target_ip}"
+        )
+        logger.info(f"Created recon scan record: {recon_scan_id}")
+
         # Scan target - returns ScanResult with services and os_info
         scan_result = scanner.scan_target(request.target_ip, ports=port_list)
 
-        # Convert ServiceInfo to dict
+        # Convert ServiceInfo to dict (include protocol field)
         service_dicts = []
         for svc in scan_result.services:
             service_dicts.append({
                 "port": svc.port,
+                "protocol": svc.protocol,  # Include protocol for frontend display
                 "state": "open",
                 "service": svc.service,
                 "product": svc.product,
@@ -417,7 +427,14 @@ async def scan_network_target(request: NetworkScanRequest):
             "os_gen": scan_result.os_info.os_gen
         }
 
+        # Save services and OS info to database
+        if recon_scan_id:
+            db.update_recon_services(recon_scan_id, service_dicts, os_info_dict)
+            db.complete_recon_scan(recon_scan_id)
+            logger.info(f"Saved recon data to database: {len(service_dicts)} services")
+
         return {
+            "scan_id": recon_scan_id,
             "services": service_dicts,
             "os_info": os_info_dict,
             "scan_time": datetime.now().isoformat()
@@ -511,7 +528,7 @@ async def blackbox_analysis(request: BlackboxAnalysisRequest):
                     port_list = [int(p.strip()) for p in request.ports.split(",") if p.strip()]
 
             scanned = scanner.scan_target(request.target_ip, ports=port_list)
-            services = [{"port": s.port, "service": s.service, "product": s.product, "version": s.version} for s in scanned.services]
+            services = [{"port": s.port, "protocol": s.protocol, "service": s.service, "product": s.product, "version": s.version} for s in scanned.services]
 
         # Analyze each service
         results = []
