@@ -21,7 +21,10 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
+    cb(
+      null,
+      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
+    );
   },
 });
 
@@ -32,9 +35,11 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     // Accept only ZIP files
-    if (file.mimetype === "application/zip" ||
-        file.mimetype === "application/x-zip-compressed" ||
-        file.originalname.toLowerCase().endsWith(".zip")) {
+    if (
+      file.mimetype === "application/zip" ||
+      file.mimetype === "application/x-zip-compressed" ||
+      file.originalname.toLowerCase().endsWith(".zip")
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only ZIP files are allowed"));
@@ -64,7 +69,10 @@ router.post("/analyze", reconController.analyzeServices.bind(reconController));
  * @access  Public
  * @body    { service, os_info? }
  */
-router.post("/simulation-setup", reconController.simulationSetup.bind(reconController));
+router.post(
+  "/simulation-setup",
+  reconController.simulationSetup.bind(reconController)
+);
 
 /**
  * @route   POST /api/recon/blackbox
@@ -72,7 +80,10 @@ router.post("/simulation-setup", reconController.simulationSetup.bind(reconContr
  * @access  Public
  * @body    { target_ip, ports?, services? }
  */
-router.post("/blackbox", reconController.blackboxAnalysis.bind(reconController));
+router.post(
+  "/blackbox",
+  reconController.blackboxAnalysis.bind(reconController)
+);
 
 /**
  * @route   POST /api/recon/whitebox
@@ -80,7 +91,10 @@ router.post("/blackbox", reconController.blackboxAnalysis.bind(reconController))
  * @access  Public
  * @body    { source_path, target_ip, target_port?, application_name? }
  */
-router.post("/whitebox", reconController.whiteboxWorkflow.bind(reconController));
+router.post(
+  "/whitebox",
+  reconController.whiteboxWorkflow.bind(reconController)
+);
 
 /**
  * @route   POST /api/recon/whitebox/upload
@@ -88,6 +102,23 @@ router.post("/whitebox", reconController.whiteboxWorkflow.bind(reconController))
  * @access  Public
  * @body    FormData with zipFile, targetIp, targetPort?, applicationName?
  */
-router.post("/whitebox/upload", upload.single("zipFile"), reconController.whiteboxUpload.bind(reconController));
+router.post(
+  "/whitebox/upload",
+  upload.single("zipFile"),
+  reconController.whiteboxUpload.bind(reconController)
+);
+
+/**
+ * @route   GET /api/recon/history
+ * @desc    Get paginated recon history, or single recon if id query param provided
+ * @access  Public
+ * @query   ?page=1&limit=10&sort=asc|desc OR ?id=scan_id
+ */
+router.get("/history", (req, res, next) => {
+  if (req.query.id) {
+    return reconController.getReconById.bind(reconController)(req, res, next);
+  }
+  return reconController.getReconHistory.bind(reconController)(req, res, next);
+});
 
 export default router;
