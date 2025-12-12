@@ -40,8 +40,8 @@ const AgentPage = () => {
   };
 
   return (
-    <div className="text-white px-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="text-white px-8 pb-6">
+      <div className="px-24 mx-auto space-y-6">
         {/* Header Card - Command Instructions */}
         <div className="glassmorphism-card p-6 rounded-lg border border-red-500/20">
           <h2 className="text-xl font-semibold text-white mb-4">

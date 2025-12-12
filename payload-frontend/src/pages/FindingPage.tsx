@@ -163,11 +163,11 @@ const FindingPage = () => {
 
   return (
     <div className="">
-      <div className="max-w-6xl mx-auto flex gap-6">
+      <div className="px-48 mx-auto flex gap-6">
         {/* Left Sidebar - Scan Summary */}
         <div className="w-[25%]">
           <div className="glassmorphism-card rounded-lg p-4 border border-red-500/20">
-            <h2 className="text-lg font-semibold mb-2">Scan Summary</h2>
+            <h2 className="text-lg font-semibold mb-2">Finding Summary</h2>
             <div className="space-y-2">
               {/* Total Findings */}
               <button
@@ -345,7 +345,9 @@ const FindingPage = () => {
                           {finding.cwe}
                         </td>
                         <td className="p-4 text-sm text-gray-300">
-                          {finding.cve === "Unknown" ? "Unclassified" : finding.cve}
+                          {finding.cve === "Unknown"
+                            ? "Unclassified"
+                            : finding.cve}
                         </td>
                         <td className="p-4 text-sm text-gray-300">
                           {finding.file}

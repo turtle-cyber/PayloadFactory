@@ -139,7 +139,7 @@ const ResultsPage: React.FC = () => {
 
   return (
     <div className="overflow-auto text-white">
-      <div className="max-w-6xl mx-auto px-6">
+      <div className="px-48 mx-auto">
         {/* Findings Section */}
         <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
           <div className="flex justify-between items-center mb-6">
@@ -156,10 +156,17 @@ const ResultsPage: React.FC = () => {
                 <>
                   <button
                     onClick={async () => {
-                      if (window.confirm("Are you sure you want to delete ALL scan data? This action cannot be undone.")) {
+                      if (
+                        window.confirm(
+                          "Are you sure you want to delete ALL scan data? This action cannot be undone."
+                        )
+                      ) {
                         try {
                           await http.delete("/scans/all");
-                          toast.success("Database cleared", "All scans and findings have been deleted");
+                          toast.success(
+                            "Database cleared",
+                            "All scans and findings have been deleted"
+                          );
                           fetchScans();
                         } catch (error) {
                           toast.error("Error", "Failed to clear database");

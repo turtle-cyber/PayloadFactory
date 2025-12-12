@@ -1,3 +1,10 @@
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 import React from "react";
 
 interface Service {
@@ -52,7 +59,7 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({
   return (
     <>
       <div className="py-2 px-4 rounded-lg bg-[#2f2f2f] flex items-center justify-between">
-        <span>Fingerprints</span>
+        <span>Target Fingerprints</span>
         {selectedIndex !== null && selectedIndex !== undefined && (
           <span className="text-sm text-blue-400">1 port selected</span>
         )}
@@ -69,7 +76,10 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({
                 STATE
               </th>
               <th className="text-left p-4 text-sm font-semibold text-gray-400">
-                SERVICE
+                PRODUCT
+              </th>
+              <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                PROTOCOL
               </th>
               <th className="text-left p-4 text-sm font-semibold text-gray-400">
                 VERSION
@@ -77,8 +87,18 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({
               <th className="text-left p-4 text-sm font-semibold text-gray-400">
                 OS
               </th>
-              <th className="text-center p-4 text-sm font-semibold text-gray-400">
-                SELECT
+              <th className="text-center justify-items-center p-4 text-sm font-semibold text-gray-400">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-4 h-4 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Select one port at a time for Help Guide & Exploit
+                      Generation
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </th>
             </tr>
           </thead>
@@ -112,10 +132,13 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({
                       </span>
                     </td>
                     <td className="p-4 text-sm text-gray-300">
-                      {service.product || service.service || "unknown"}
+                      {service.product || "Unclassified"}
+                    </td>
+                    <td className="p-4 text-sm text-gray-300">
+                      {service.service || "Unclassified"}
                     </td>
                     <td className="p-4 text-sm text-gray-400 font-mono">
-                      {service.version && service.version !== "unknown"
+                      {service.version && service.version !== "Unclassified"
                         ? service.version
                         : "—"}
                     </td>

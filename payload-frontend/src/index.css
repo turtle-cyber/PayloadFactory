@@ -32,7 +32,7 @@ body {
     /* background: rgb(20, 14, 14, 0.1); */
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(20px);
-    padding: 32px;
+    padding: 16px;
     border-radius: 8px;
     border: 1px solid transparent;
     border-top-color: rgba(255, 255, 255, 0.38);
