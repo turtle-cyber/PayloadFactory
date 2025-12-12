@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import ReconPopup from "./ReconPopup";
+import { toast } from "@/utils/toast";
 
 interface ReconTargetCardProps {
   targetIp: string;
@@ -16,6 +17,7 @@ interface ReconTargetCardProps {
   setAppName: (value: string) => void;
   onScan: () => Promise<void>;
   isScanning: boolean;
+  onScanComplete?: () => void;
 }
 
 const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
@@ -25,29 +27,64 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
   setAppName,
   onScan,
   isScanning,
+  onScanComplete,
 }) => {
   const navigate = useNavigate();
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [isScanComplete, setIsScanComplete] = useState(false);
+  const [scanFailed, setScanFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const handleNavigateHistory = () => {
     navigate("/recon/history");
   };
 
   const handleScan = async () => {
+    // Validate inputs and show info toast if missing
+    if (!appName.trim()) {
+      toast.info(
+        "Reconnaissance Name Required",
+        "Please enter a reconnaissance name before scanning"
+      );
+      return;
+    }
+    if (!targetIp.trim()) {
+      toast.info(
+        "Target Required",
+        "Please enter a target IP/URL/Domain before scanning"
+      );
+      return;
+    }
+
     setIsPopupOpen(true);
     setIsScanComplete(false);
+    setScanFailed(false);
+    setErrorMessage(undefined);
     try {
       await onScan();
       setIsScanComplete(true);
-    } catch (error) {
-      setIsPopupOpen(false);
+    } catch (error: any) {
+      setScanFailed(true);
+      setErrorMessage(
+        error?.response?.data?.message || error?.message || "Scan failed"
+      );
+      setIsScanComplete(true); // Mark as complete so popup shows result
     }
   };
 
   const handleClosePopup = () => {
     setIsPopupOpen(false);
     setIsScanComplete(false);
+    setScanFailed(false);
+    setErrorMessage(undefined);
+  };
+
+  const handleOkClick = () => {
+    handleClosePopup();
+    // Only call onScanComplete for successful scans
+    if (!scanFailed) {
+      onScanComplete?.();
+    }
   };
 
   return (
@@ -56,7 +93,9 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
         isOpen={isPopupOpen}
         onClose={handleClosePopup}
         isScanning={!isScanComplete}
-        onOk={handleClosePopup}
+        scanFailed={scanFailed}
+        errorMessage={errorMessage}
+        onOk={handleOkClick}
       />
       {/*Heading*/}
       <div className="items-center justify-between flex gap-2">
@@ -81,7 +120,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
       </div>
 
       {/*Inputs And Options*/}
-      <div className="flex items-center ml-10 px-4 gap-x-4 mt-4">
+      <div className="flex items-center mx-10 px-4 gap-x-4 mt-4 mb-4">
         <span className="text-blue-300 font-mono text-sm">
           Enter Reconnaissance Name:
         </span>
@@ -89,16 +128,17 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
         <input
           type="text"
           name="reconName"
+          autoComplete="off"
           value={appName}
           onChange={(e) => setAppName(e.target.value)}
           disabled={isScanning}
-          className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+          className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm text-white disabled:opacity-30 disabled:cursor-not-allowed [&:-webkit-autofill]:[-webkit-box-shadow:0_0_0_1000px_#1f2937_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:#fff]"
           placeholder="My App"
         />
       </div>
 
       {/*Terminal Window */}
-      <div className="p-4 ml-10 w-[70%]">
+      <div className="p-4 ml-10 w-[60%]">
         <div className="items-center justify-between flex rounded-t-lg bg-[#2f2f2f] py-1 px-4">
           <span className="font-md text-gray-500 font-mono">
             Enter the Target's
@@ -115,7 +155,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
                 onChange={(e) => setTargetIp(e.target.value)}
                 placeholder="IP / URL / DOMAIN"
                 disabled={isScanning}
-                className="w-full bg-transparent text-md text-blue-300 placeholder-blue-300/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-transparent text-md text-blue-300 placeholder-blue-300/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ["
               />
               <TooltipProvider>
                 <Tooltip>

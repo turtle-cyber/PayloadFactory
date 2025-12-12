@@ -151,6 +151,7 @@ const ReconPage = () => {
   } | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [showFingerprintTable, setShowFingerprintTable] = useState(false);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null
   );
@@ -167,7 +168,10 @@ const ReconPage = () => {
       if (state.target_ip) setTargetIp(state.target_ip);
       if (state.scan_name) setAppName(state.scan_name);
       if (state.os_info) setOsInfo(state.os_info);
-      if (state.services) setServices(state.services);
+      if (state.services) {
+        setServices(state.services);
+        setShowFingerprintTable(true); // Show table when loading from history
+      }
 
       // Select the clicked service (single index)
       if (typeof state.selectedServiceIndex === "number") {
@@ -343,6 +347,7 @@ const ReconPage = () => {
     setOsInfo(null);
     setSelectedIndex(null);
     setAnalysis("");
+    setShowFingerprintTable(false);
 
     try {
       const response = await http.post("/recon/scan", {
@@ -578,18 +583,21 @@ const ReconPage = () => {
               setAppName={setAppName}
               onScan={handleScan}
               isScanning={isScanning}
+              onScanComplete={() => setShowFingerprintTable(true)}
             />
           </div>
 
-          {/* Fingerprints Table with OS Info */}
-          <div>
-            <FingerprintTable
-              services={services}
-              osInfo={osInfo}
-              selectedIndex={selectedIndex}
-              onServiceSelect={handleServiceSelect}
-            />
-          </div>
+          {/* Fingerprints Table with OS Info - only show after popup dismissed */}
+          {services.length > 0 && showFingerprintTable && (
+            <div>
+              <FingerprintTable
+                services={services}
+                osInfo={osInfo}
+                selectedIndex={selectedIndex}
+                onServiceSelect={handleServiceSelect}
+              />
+            </div>
+          )}
 
           {/* Scan Progress Box - Detailed */}
           {(scanProgress || processingProgress) && (
@@ -633,6 +641,7 @@ const ReconPage = () => {
                       setAcknowledgmentChecked(false);
                       setProcessingProgress(null);
                       setIsAnalyzing(false);
+                      setShowFingerprintTable(false);
 
                       toast.success(
                         "Ready for New Scan",
@@ -737,32 +746,38 @@ const ReconPage = () => {
             </div>
           )}
 
-          {/* Guide Card */}
-          <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-            <GuideCard
-              analysis={analysis}
-              acknowledgmentChecked={acknowledgmentChecked}
-              onAcknowledgmentChange={handleAcknowledgmentChange}
-            />
-          </div>
+          {/* Guide Card - only show when a service is selected */}
+          {selectedIndex !== null && (
+            <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
+              <GuideCard
+                analysis={analysis}
+                acknowledgmentChecked={acknowledgmentChecked}
+                onAcknowledgmentChange={handleAcknowledgmentChange}
+              />
+            </div>
+          )}
 
-          {/* Exploit Generation Window */}
-          <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-            <ExploitGenerationCard
-              mode={mode}
-              setMode={setMode}
-              selectedFile={selectedFile}
-              onFileSelect={setSelectedFile}
-              onGenerate={mode === "whitebox" ? handleWhitebox : handleBlackbox}
-              isGenerating={isAnalyzing}
-              disabled={!acknowledgmentChecked}
-            />
-          </div>
+          {/* Exploit Generation Window - only show when a service is selected */}
+          {selectedIndex !== null && (
+            <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
+              <ExploitGenerationCard
+                mode={mode}
+                setMode={setMode}
+                selectedFile={selectedFile}
+                onFileSelect={setSelectedFile}
+                onGenerate={mode === "whitebox" ? handleWhitebox : handleBlackbox}
+                isGenerating={isAnalyzing}
+                disabled={!acknowledgmentChecked}
+              />
+            </div>
+          )}
 
-          {/* Scan Logs */}
-          <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-            <ScanLogCard scanId={currentScanId} isScanning={isAnalyzing} />
-          </div>
+          {/* Scan Logs - only show when there's an active scan */}
+          {currentScanId && (
+            <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
+              <ScanLogCard scanId={currentScanId} isScanning={isAnalyzing} />
+            </div>
+          )}
         </div>
       </div>
     </div>
