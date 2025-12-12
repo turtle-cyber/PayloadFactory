@@ -20,7 +20,7 @@ const GuideCard: React.FC<GuideCardProps> = ({
   return (
     <div>
       {/*Heading*/}
-      <div className="items-center flex gap-2 px-4 py-2">
+      <div className="items-center flex gap-2 px-4 py-2 backdrop-blur-sm">
         <div className="text-gray-400">
           <Signpost className="w-5" />
         </div>

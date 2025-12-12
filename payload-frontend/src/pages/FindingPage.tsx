@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { ArrowRight, Download, Trash } from "lucide-react";
 import { http } from "../utils/http";
 import { GET_FINDINGS } from "../endpoints/resultspage.endpoints";
 import { toast } from "sonner";
@@ -47,7 +47,6 @@ function useGetFindings(scan_id: string) {
       const response = await http.get(GET_FINDINGS, {
         params: { scan_id },
       });
-      console.log(response);
 
       if (response.status === 200 && response.data) {
         toast.success("Findings loaded successfully");
@@ -78,9 +77,7 @@ const FindingPage = () => {
 
   const { findingData, findingLoading } = useGetFindings(scanId);
 
-  const [selectedSeverity, setSelectedSeverity] = useState<
-    "All" | "Critical" | "High" | "Medium" | "Low"
-  >("All");
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
   const findings = findingData?.findings || [];
   const severityCounts = findingData?.counts || {
@@ -92,10 +89,32 @@ const FindingPage = () => {
     unknown: 0,
   };
 
-  const filteredFindings =
-    selectedSeverity === "All"
-      ? findings
-      : findings.filter((finding) => finding.severity === selectedSeverity);
+  const selectableFindings = findings
+    .map((finding, index) => ({ finding, index }))
+    .filter(({ finding }) => finding.exploit_path);
+
+  const isAllSelected =
+    selectableFindings.length > 0 &&
+    selectableFindings.every(({ index }) => selectedRows.has(index));
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedRows(new Set());
+    } else {
+      const allIndices = new Set(selectableFindings.map(({ index }) => index));
+      setSelectedRows(allIndices);
+    }
+  };
+
+  const handleSelectRow = (index: number) => {
+    const newSelected = new Set(selectedRows);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedRows(newSelected);
+  };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -165,84 +184,57 @@ const FindingPage = () => {
     <div className="">
       <div className="px-48 mx-auto flex gap-6">
         {/* Left Sidebar - Scan Summary */}
-        <div className="w-[25%]">
-          <div className="glassmorphism-card rounded-lg p-4 border border-red-500/20">
-            <h2 className="text-lg font-semibold mb-2">Finding Summary</h2>
-            <div className="space-y-2">
+        <div className="w-[20%]">
+          <div className="rounded-lg p-4">
+            <h2 className="text-lg mb-4 font-mono">Finding Summary</h2>
+            <div className="border border-[#30363d] rounded-lg">
               {/* Total Findings */}
-              <button
-                onClick={() => setSelectedSeverity("All")}
-                className={`w-full flex justify-between items-center p-2 rounded-lg transition-all cursor-pointer ${
-                  selectedSeverity === "All"
-                    ? "bg-gray-700/50 border-2 border-gray-500"
-                    : "hover:bg-gray-800/30 border-2 border-transparent"
-                }`}
-              >
+              <div className="w-full flex justify-between items-center p-2">
                 <span className="text-sm text-gray-300">Total Findings</span>
                 <span className="bg-gray-700 px-3 py-1 rounded-full text-sm font-semibold">
                   {severityCounts.total}
                 </span>
-              </button>
+              </div>
 
               {/* Critical */}
-              <button
-                onClick={() => setSelectedSeverity("Critical")}
-                className={`w-full flex justify-between items-center p-2 rounded-lg transition-all cursor-pointer ${
-                  selectedSeverity === "Critical"
-                    ? "bg-red-900/30 border-2 border-red-500"
-                    : "hover:bg-red-900/10 border-2 border-transparent"
-                }`}
-              >
-                <span className="text-sm text-red-500">Critical</span>
-                <span className="bg-red-900/30 px-3 py-1 rounded-full text-sm font-semibold text-red-400">
-                  {severityCounts.critical}
-                </span>
-              </button>
+              {severityCounts.critical > 0 && (
+                <div className="w-full flex justify-between items-center p-2">
+                  <span className="text-sm text-red-500">Critical</span>
+                  <span className="bg-red-900/30 px-3 py-1 rounded-full text-sm font-semibold text-red-400">
+                    {severityCounts.critical}
+                  </span>
+                </div>
+              )}
 
               {/* High */}
-              <button
-                onClick={() => setSelectedSeverity("High")}
-                className={`w-full flex justify-between items-center p-2 rounded-lg transition-all cursor-pointer ${
-                  selectedSeverity === "High"
-                    ? "bg-orange-900/30 border-2 border-orange-500"
-                    : "hover:bg-orange-900/10 border-2 border-transparent"
-                }`}
-              >
-                <span className="text-sm text-orange-500">High</span>
-                <span className="bg-orange-900/30 px-3 py-1 rounded-full text-sm font-semibold text-orange-400">
-                  {severityCounts.high}
-                </span>
-              </button>
+              {severityCounts.high > 0 && (
+                <div className="w-full flex justify-between items-center p-2">
+                  <span className="text-sm text-orange-500">High</span>
+                  <span className="bg-orange-900/30 px-3 py-1 rounded-full text-sm font-semibold text-orange-400">
+                    {severityCounts.high}
+                  </span>
+                </div>
+              )}
 
               {/* Medium */}
-              <button
-                onClick={() => setSelectedSeverity("Medium")}
-                className={`w-full flex justify-between items-center p-2 rounded-lg transition-all cursor-pointer ${
-                  selectedSeverity === "Medium"
-                    ? "bg-yellow-900/30 border-2 border-yellow-500"
-                    : "hover:bg-yellow-900/10 border-2 border-transparent"
-                }`}
-              >
-                <span className="text-sm text-gray-500">Medium</span>
-                <span className="bg-gray-700 px-3 py-1 rounded-full text-sm font-semibold text-gray-400">
-                  {severityCounts.medium}
-                </span>
-              </button>
+              {severityCounts.medium > 0 && (
+                <div className="w-full flex justify-between items-center p-2">
+                  <span className="text-sm text-yellow-500">Medium</span>
+                  <span className="bg-yellow-900/30 px-3 py-1 rounded-full text-sm font-semibold text-yellow-400">
+                    {severityCounts.medium}
+                  </span>
+                </div>
+              )}
 
               {/* Low */}
-              <button
-                onClick={() => setSelectedSeverity("Low")}
-                className={`w-full flex justify-between items-center p-2 rounded-lg transition-all cursor-pointer ${
-                  selectedSeverity === "Low"
-                    ? "bg-cyan-900/30 border-2 border-cyan-500"
-                    : "hover:bg-cyan-900/10 border-2 border-transparent"
-                }`}
-              >
-                <span className="text-sm text-gray-500">Low</span>
-                <span className="bg-gray-700 px-3 py-1 rounded-full text-sm font-semibold text-gray-400">
-                  {severityCounts.low}
-                </span>
-              </button>
+              {severityCounts.low > 0 && (
+                <div className="w-full flex justify-between items-center p-2">
+                  <span className="text-sm text-cyan-500">Low</span>
+                  <span className="bg-cyan-900/30 px-3 py-1 rounded-full text-sm font-semibold text-cyan-400">
+                    {severityCounts.low}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -250,34 +242,22 @@ const FindingPage = () => {
         {/* Main Content - Findings Table */}
         <div className="w-[75%]">
           {/* Header with buttons */}
-          <div className="glassmorphism-card rounded-lg p-4 border border-red-500/20 mb-4">
+          <div className="rounded-lg px-4 py-2 bg-[#2f2f2f] mb-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Findings</h2>
-              {/* <div className="flex gap-2">
-                <button className="border border-gray-600 hover:border-red-500 rounded-lg px-4 py-2 text-sm transition-colors flex items-center gap-2">
+              <h2 className="text-md font-mono text-[#969696]">Findings</h2>
+              <div className="flex gap-2">
+                <button className="px-2 py-1 text-sm transition-colors flex items-center gap-2 font-thin tracking-wide border border-gray-600 hover:border-red-500 rounded-lg">
                   <span className="text-gray-500">
-                    <Trash className="w-5" />
+                    <Trash className="w-4" />
                   </span>
                   Clear Results
                 </button>
-                <button className="border border-gray-600 hover:border-red-500 rounded-lg px-4 py-2 text-sm transition-colors flex items-center gap-2">
-                  <span className="text-gray-500">
-                    <Share className="w-5" />
-                  </span>
-                  Export Results
-                </button>
-                <button className="border border-gray-600 hover:border-red-500 rounded-lg px-4 py-2 text-sm transition-colors flex items-center gap-2">
-                  <span className="text-gray-500">
-                    <Bandage className="w-5" />
-                  </span>
-                  Generate Patches
-                </button>
-              </div> */}
+              </div>
             </div>
           </div>
 
           {/* Findings Table */}
-          <div className="glassmorphism-card rounded-lg border border-red-500/20 max-h-[70vh] overflow-auto">
+          <div className="rounded-lg max-h-[70vh] overflow-auto bg-[#201f1c] opacity-70">
             {findingLoading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
@@ -285,16 +265,14 @@ const FindingPage = () => {
                   <p className="text-gray-400">Loading findings...</p>
                 </div>
               </div>
-            ) : filteredFindings.length === 0 ? (
+            ) : findings.length === 0 ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
                   <p className="text-gray-400 text-lg mb-2">
                     No findings available
                   </p>
                   <p className="text-gray-500 text-sm">
-                    {selectedSeverity !== "All"
-                      ? `No ${selectedSeverity.toLowerCase()} severity findings found`
-                      : "No vulnerability findings for this scan"}
+                    No vulnerability findings for this scan
                   </p>
                 </div>
               </div>
@@ -324,13 +302,26 @@ const FindingPage = () => {
                       <th className="text-left p-4 text-sm font-semibold text-gray-400">
                         Download Exploit
                       </th>
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          onChange={handleSelectAll}
+                          disabled={selectableFindings.length === 0}
+                          className={`w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500 focus:ring-offset-0 ${
+                            selectableFindings.length > 0
+                              ? "cursor-pointer"
+                              : "cursor-not-allowed opacity-40"
+                          }`}
+                        />
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredFindings.map((finding, index) => (
+                    {findings.map((finding, index) => (
                       <tr
                         key={index}
-                        className="border-b border-gray-800 hover:bg-gray-900/50 transition-colors"
+                        className="border-gray-800 hover:bg-gray-900/50 transition-colors"
                       >
                         <td className="p-4">
                           <span
@@ -372,12 +363,40 @@ const FindingPage = () => {
                             <span className="text-gray-600 text-xs">N/A</span>
                           )}
                         </td>
+                        <td className="text-center p-4 align-middle">
+                          <input
+                            type="checkbox"
+                            checked={selectedRows.has(index)}
+                            onChange={() => handleSelectRow(index)}
+                            disabled={!finding.exploit_path}
+                            className={`w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500 focus:ring-offset-0 ${
+                              finding.exploit_path
+                                ? "cursor-pointer"
+                                : "cursor-not-allowed opacity-40"
+                            }`}
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+          </div>
+
+          {/* Launch Button */}
+          <div className="flex justify-center mt-5">
+            <button
+              disabled={selectedRows.size === 0}
+              className={`border w-32 rounded-lg px-4 py-2 flex justify-center items-center gap-x-2 transition-all duration-300 ${
+                selectedRows.size > 0
+                  ? "bg-[#ff11111f] border-[#795a5a] text-gray-200 hover:bg-[#ff111145] hover:shadow-[0_0_20px_rgba(255,50,50,0.3)]"
+                  : "bg-gray-800/30 border-gray-700 text-gray-600 cursor-not-allowed"
+              }`}
+            >
+              <span>Launch</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
