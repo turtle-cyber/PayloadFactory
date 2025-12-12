@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowRight, Crosshair, History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -6,13 +7,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import ReconPopup from "./ReconPopup";
 
 interface ReconTargetCardProps {
   targetIp: string;
   setTargetIp: (value: string) => void;
   appName: string;
   setAppName: (value: string) => void;
-  onScan: () => void;
+  onScan: () => Promise<void>;
   isScanning: boolean;
 }
 
@@ -25,13 +27,37 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
   isScanning,
 }) => {
   const navigate = useNavigate();
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [isScanComplete, setIsScanComplete] = useState(false);
 
   const handleNavigateHistory = () => {
     navigate("/recon/history");
   };
 
+  const handleScan = async () => {
+    setIsPopupOpen(true);
+    setIsScanComplete(false);
+    try {
+      await onScan();
+      setIsScanComplete(true);
+    } catch (error) {
+      setIsPopupOpen(false);
+    }
+  };
+
+  const handleClosePopup = () => {
+    setIsPopupOpen(false);
+    setIsScanComplete(false);
+  };
+
   return (
     <div>
+      <ReconPopup
+        isOpen={isPopupOpen}
+        onClose={handleClosePopup}
+        isScanning={!isScanComplete}
+        onOk={handleClosePopup}
+      />
       {/*Heading*/}
       <div className="items-center justify-between flex gap-2">
         <div className="text-gray-400 flex items-center gap-2">
@@ -62,7 +88,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
 
         <input
           type="text"
-          name="applicationName"
+          name="reconName"
           value={appName}
           onChange={(e) => setAppName(e.target.value)}
           disabled={isScanning}
@@ -95,7 +121,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={onScan}
+                      onClick={handleScan}
                       disabled={isScanning}
                       className="rounded-md border border-[#4b4b4b] text-[#4b4b4b] hover:border-red-500 hover:text-red-500 px-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >

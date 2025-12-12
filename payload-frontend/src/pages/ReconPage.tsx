@@ -569,7 +569,7 @@ const ReconPage = () => {
   return (
     <div>
       <div className="overflow-auto text-white pb-6">
-        <div className="max-w-6xl mx-auto px-6 space-y-6">
+        <div className="mx-auto px-24 space-y-6">
           <div className="glassmorphism-card">
             <ReconTargetCard
               targetIp={targetIp}

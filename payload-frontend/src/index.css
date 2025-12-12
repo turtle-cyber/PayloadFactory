@@ -28,8 +28,8 @@ body {
   }
 
   .glassmorphism-card {
-    /* background: rgb(202, 142, 142, 0.1); */
-    background: rgb(20, 14, 14, 0.1);
+    background: rgb(202, 142, 142, 0.1);
+    /* background: rgb(20, 14, 14, 0.1); */
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(20px);
     padding: 32px;
