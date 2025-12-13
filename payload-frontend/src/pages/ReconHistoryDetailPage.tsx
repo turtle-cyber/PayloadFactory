@@ -3,7 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { http } from "@/utils/http";
 import { GET_RECON_BY_ID } from "@/endpoints/recon.endpoints";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  MonitorSmartphone,
+  Timer,
+} from "lucide-react";
 
 interface OsInfo {
   name: string;
@@ -30,6 +36,7 @@ interface ReconDetail {
   status: string;
   mode: string;
   exec_time: string;
+  timestamp: string;
   date: string;
   os_info: OsInfo | null;
   services: Service[];
@@ -50,6 +57,21 @@ const formatStatus = (status: string | undefined | null) => {
     return "bg-gray-500/20 text-gray-400 p-2 rounded-md";
   }
 };
+
+function convertUTCToIST(utcTimestamp: string): string {
+  const date = new Date(utcTimestamp);
+
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
 
 const ReconHistoryDetailPage = () => {
   const { recon_id } = useParams<{ recon_id: string }>();
@@ -103,7 +125,7 @@ const ReconHistoryDetailPage = () => {
   if (loading) {
     return (
       <div className="overflow-auto text-white">
-        <div className="max-w-6xl mx-auto space-y-6 px-6">
+        <div className="mx-auto space-y-6 px-48">
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
@@ -129,18 +151,17 @@ const ReconHistoryDetailPage = () => {
 
   return (
     <div className="overflow-auto text-white">
-      <div className="max-w-6xl mx-auto space-y-6 px-6">
+      <div className="mx-auto space-y-6 px-48">
         {/* Header */}
-        <div className="glassmorphism-card border border-red-600/20 py-2 px-4 rounded-lg flex items-center gap-4">
-          <button
-            onClick={() => navigate("/recon/history")}
-            className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-lg">{recon.scan_name}</h1>
-            <p className="text-sm text-gray-400">{recon.target_ip}</p>
+        <div className="py-2 px-4 rounded-lg bg-[#2f2f2f] flex items-center align-center justify-between gap-x-2">
+          <div className="flex items-center justify-center gap-x-2">
+            <button
+              onClick={() => navigate("/recon/history")}
+              className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-lg font-mono">{recon.scan_name}</h1>
           </div>
           <span className={formatStatus(recon.status)}>
             {recon.status.charAt(0).toUpperCase() + recon.status.slice(1)}
@@ -149,29 +170,38 @@ const ReconHistoryDetailPage = () => {
 
         {/* Info Cards */}
         <div className="grid grid-cols-3 md:grid-cols-3 gap-3">
-          {/* <div className="bg-[#1a1714] p-4 rounded-lg">
-            <p className="text-sm text-gray-400">Mode</p>
-            <p className="text-lg font-medium">{recon.mode || "-"}</p>
-          </div> */}
-          <div className="glassmorphism-card border border-red-600/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-400">Execution Time</p>
-            <p className="text-md font-medium">{recon.exec_time || "-"}</p>
+          <div className="bg-[#201f1c] opacity-70 p-4 rounded-lg">
+            <div className="text-xl flex items-center gap-2">
+              <span>Execution Time</span>
+              <Timer />
+            </div>
+            <p className="text-md mt-2">{recon.exec_time || "-"}</p>
           </div>
-          <div className="glassmorphism-card border border-red-600/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-400">Date</p>
-            <p className="text-md font-medium">{recon.date || "-"}</p>
+          <div className="bg-[#201f1c] opacity-70 p-4 rounded-lg">
+            <div className="text-xl flex items-center gap-2">
+              <span>Timestamp</span>
+              <Calendar />
+            </div>
+            <p className="text-md mt-2">
+              {convertUTCToIST(recon.timestamp) || "-"}
+            </p>
           </div>
-          <div className="glassmorphism-card border border-red-600/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-400">OS Detected</p>
-            <p className="text-md font-medium">{recon.os_info?.name || "-"}</p>
+          <div className="bg-[#201f1c] opacity-70 p-4 rounded-lg">
+            <div className="text-xl flex items-center gap-2">
+              <span>Operating System</span>
+              <MonitorSmartphone />
+            </div>
+            <p className="text-md mt-2">{recon.os_info?.name || "-"}</p>
           </div>
         </div>
 
         {/* Services Table */}
-        <div className="glassmorphism-card p-4 rounded-lg border border-red-500/20 max-h-[70vh] overflow-auto">
-          <h2 className="text-lg font-semibold mb-4">
+        <div className="px-2 py-2 rounded-xl bg-[#2f2f2f] opacity-70 overflow-auto">
+          <h2 className="text-lg font-mono">
             Services ({recon.services.length})
           </h2>
+        </div>
+        <div className="p-1 rounded-lg bg-[#201f1c] opacity-70 max-h-[70vh] overflow-auto">
           {recon.services.length === 0 ? (
             <p className="text-gray-400 text-center py-8">No services found</p>
           ) : (

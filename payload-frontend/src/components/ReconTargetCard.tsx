@@ -122,7 +122,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
       {/*Inputs And Options*/}
       <div className="flex items-center mx-10 px-4 gap-x-4 mt-4 mb-4">
         <span className="text-blue-300 font-mono text-sm">
-          Enter Reconnaissance Name:
+          Recon Project Name:
         </span>
 
         <input
@@ -140,9 +140,7 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
       {/*Terminal Window */}
       <div className="p-4 ml-10 w-[60%]">
         <div className="items-center justify-between flex rounded-t-lg bg-[#2f2f2f] py-1 px-4">
-          <span className="font-md text-gray-500 font-mono">
-            Enter the Target's
-          </span>
+          <span className="font-md text-gray-500 font-mono">Target's</span>
         </div>
 
         <div className="border-[#2f2f2f] border items-center bg-[#0d0d0d] p-4 rounded-b-lg">
