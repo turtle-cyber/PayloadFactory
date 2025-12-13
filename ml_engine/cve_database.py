@@ -1711,6 +1711,174 @@ class CVEDatabase:
                     "exploit_notes": "Redirect users to malicious site.",
                     "owasp": "A01:2021-Broken Access Control"
                 }
+            ],
+            
+            # =========================================================================
+            # ECLIPSE JETTY CVEs
+            # =========================================================================
+            "eclipse_jetty": [
+                {
+                    "cve_id": "CVE-2023-40167",
+                    "cwe": "CWE-444",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "HTTP Request Smuggling via improper HTTP/1 header parsing",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.51",
+                        "10": "10.0.0 to 10.0.15",
+                        "11": "11.0.0 to 11.0.15"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.52",
+                        "10": "10.0.16",
+                        "11": "11.0.16"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Smuggle requests via +prefixed Content-Length to bypass WAF and poison cache.",
+                    "owasp": "A03:2021-Injection",
+                    "relevant_files": r"jetty\.xml|Handler|Connector"
+                },
+                {
+                    "cve_id": "CVE-2023-36478",
+                    "cwe": "CWE-190",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "Integer Overflow in HPACK MetaDataBuilder.checkSize causing DoS",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.51",
+                        "10": "10.0.0 to 10.0.15",
+                        "11": "11.0.0 to 11.0.15"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.52",
+                        "10": "10.0.16",
+                        "11": "11.0.16"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "DoS via large HPACK integer causing buffer allocation issues.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "CVE-2023-44487",
+                    "cwe": "CWE-400",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "HTTP/2 Rapid Reset Attack causing DoS (exploited in the wild)",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.52",
+                        "10": "10.0.0 to 10.0.16",
+                        "11": "11.0.0 to 11.0.16"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.53",
+                        "10": "10.0.17",
+                        "11": "11.0.17"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Resource exhaustion via rapid HTTP/2 stream creation and cancellation. Actively exploited Aug-Oct 2023.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "CVE-2023-41900",
+                    "cwe": "CWE-287",
+                    "severity": "Medium",
+                    "cvss": 4.3,
+                    "description": "OpenIdAuthenticator allows revoked users to bypass authentication",
+                    "affected_versions": {
+                        "9": "9.4.21 to 9.4.51",
+                        "10": "10.0.0 to 10.0.15",
+                        "11": "11.0.0 to 11.0.15"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.52",
+                        "10": "10.0.16",
+                        "11": "11.0.16"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Auth bypass when using OpenIdAuthenticator with nested LoginService.",
+                    "owasp": "A07:2021-Identification and Authentication Failures"
+                },
+                {
+                    "cve_id": "CVE-2024-8184",
+                    "cwe": "CWE-400",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "ThreadLimitHandler.getRemote() memory exhaustion DoS",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.53",
+                        "10": "10.0.0 to 10.0.17",
+                        "11": "11.0.0 to 11.0.17"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.54",
+                        "10": "10.0.18",
+                        "11": "11.0.18"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Memory exhaustion via crafted X-Forwarded-For headers.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "CVE-2024-9823",
+                    "cwe": "CWE-400",
+                    "severity": "High",
+                    "cvss": 7.5,
+                    "description": "DosFilter bypass leading to OutOfMemory DoS",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.53",
+                        "10": "10.0.0 to 10.0.17",
+                        "11": "11.0.0 to 11.0.17"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.54",
+                        "10": "10.0.18",
+                        "11": "11.0.18"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "Bypass rate limiting by spoofing X-Forwarded-For to cause OOM.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "CVE-2024-22201",
+                    "cwe": "CWE-404",
+                    "severity": "Medium",
+                    "cvss": 5.9,
+                    "description": "HTTP/2 SSL connection leak causing file descriptor exhaustion",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.53",
+                        "10": "10.0.0 to 10.0.18",
+                        "11": "11.0.0 to 11.0.18"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.54",
+                        "10": "10.0.19",
+                        "11": "11.0.19"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "FD exhaustion via congested HTTP/2 SSL connections that timeout.",
+                    "owasp": "A05:2021-Security Misconfiguration"
+                },
+                {
+                    "cve_id": "GHSA-58qw-p7qm-5rvh",
+                    "cwe": "CWE-611",
+                    "severity": "Medium",
+                    "cvss": 5.3,
+                    "description": "XmlParser allows arbitrary DOCTYPE declarations enabling XXE injection",
+                    "affected_versions": {
+                        "9": "9.4.0 to 9.4.51",
+                        "10": "10.0.0 to 10.0.15",
+                        "11": "11.0.0 to 11.0.15"
+                    },
+                    "fixed_versions": {
+                        "9": "9.4.52",
+                        "10": "10.0.16",
+                        "11": "11.0.16"
+                    },
+                    "exploit_available": True,
+                    "exploit_notes": "XXE via XmlParser for data exfiltration when processing XML.",
+                    "owasp": "A03:2021-Injection",
+                    "relevant_files": r"XmlParser|\.xml$|jetty-.*\.xml"
+                }
             ]
         }
 
@@ -1719,6 +1887,41 @@ class CVEDatabase:
         Attempts to detect software version from code or file metadata.
         Returns: (software_name, version) or (None, None)
         """
+        # Jetty detection patterns - check first as it's more specific
+        jetty_patterns = [
+            r'org\.eclipse\.jetty',
+            r'jetty\.xml',
+            r'jetty-.*\.xml',
+            r'JettyServer',
+            r'ServletContextHandler',
+            r'jetty-distribution',
+            r'jetty-home'
+        ]
+        
+        # Check if it's a Jetty-related file
+        is_jetty = any(re.search(pattern, code_content, re.IGNORECASE) or
+                       re.search(pattern, file_path, re.IGNORECASE)
+                       for pattern in jetty_patterns)
+        
+        if is_jetty:
+            # Try to extract Jetty version from path
+            jetty_version_patterns = [
+                r'jetty[/-]distribution[/-](\d+\.\d+\.\d+)',
+                r'jetty[/-]home[/-](\d+\.\d+\.\d+)',
+                r'jetty[/-](\d+\.\d+\.\d+)',
+                r'eclipse\.jetty.*?(\d+\.\d+\.\d+)',
+            ]
+            for pattern in jetty_version_patterns:
+                match = re.search(pattern, file_path, re.IGNORECASE)
+                if match:
+                    detected_version = match.group(1)
+                    logger.info(f"Detected Jetty version from path: {detected_version}")
+                    return "eclipse_jetty", detected_version
+            
+            # Default to 9.4.51 if Jetty detected but version unknown
+            logger.info("Jetty detected but version unknown, assuming 9.4.51")
+            return "eclipse_jetty", "9.4.51"
+        
         # Tomcat detection patterns
         tomcat_patterns = [
             r'org\.apache\.catalina',

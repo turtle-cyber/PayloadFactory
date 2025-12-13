@@ -468,6 +468,10 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                         }
                         db_manager.save_exploit(exploit_data, scan_id=scan_id, file_id=file_id)
                         
+                        # Mark exploit as ready for real-time launch
+                        if scan_id:
+                            db_manager.mark_exploit_ready(scan_id, exploit_filename, finding_id=vuln.get('finding_id'))
+                        
                         # Update exploits_generated counter
                         exploits_generated_count += 1
                         scan_log(f"✅ Generated exploit #{exploits_generated_count}: {exploit_filename}")
@@ -530,6 +534,10 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                                  'path': exploit_path
                              }
                              db_manager.save_exploit(exploit_data, scan_id=scan_id, file_id=file_id)
+                             
+                             # Mark exploit as ready for real-time launch
+                             if scan_id:
+                                 db_manager.mark_exploit_ready(scan_id, exploit_filename, finding_id=vuln.get('finding_id'))
                              
                              # Update exploits_generated counter for fallback
                              exploits_generated_count += 1

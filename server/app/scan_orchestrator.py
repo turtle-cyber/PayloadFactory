@@ -63,7 +63,10 @@ class ScanOrchestrator:
         scan_id = self.db.create_scan(
             project_name=project_name or os.path.basename(target_dir),
             root_path=target_dir,
-            file_size=self._get_dir_size(target_dir)
+            file_size=self._get_dir_size(target_dir),
+            auto_execute=auto_execute,
+            remote_host=remote_host,
+            remote_port=remote_port
         )
         
         # Initialize progress
@@ -121,6 +124,7 @@ class ScanOrchestrator:
             "status": scan.get("status", "unknown"),
             "progress": scan.get("progress", {}),
             "project_name": scan.get("project_name"),
+            "auto_execute": scan.get("auto_execute", False),
             "started_at": scan.get("timestamps", {}).get("submitted_at"),
             "completed_at": scan.get("timestamps", {}).get("completed_at")
         }

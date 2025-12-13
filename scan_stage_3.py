@@ -23,6 +23,51 @@ logger = setup_logger(__name__, "scan_log.json")
 
 # Global scan_id for logging (set when stage starts)
 _current_scan_id = None
+_current_exploit_filename = None
+
+
+class ExploitDBLogHandler(logging.Handler):
+    """Pipe module logger output into exploit_logs for richer UI visibility."""
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        # Keep messages clean; timestamp comes from Mongo
+        self.setFormatter(logging.Formatter("%(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Only persist when tied to an active scan/exploit
+        if not _current_scan_id or not _current_exploit_filename:
+            return
+
+        phase = "runtime"
+        if "fuzzing_module" in record.name:
+            phase = "fuzzing"
+        elif "rl_agent" in record.name:
+            phase = "rl_optimization"
+        elif "exploit_executor" in record.name:
+            phase = "execution"
+
+        try:
+            db_manager.save_exploit_log(
+                scan_id=_current_scan_id,
+                exploit_filename=_current_exploit_filename,
+                phase=phase,
+                message=self.format(record),
+                level=record.levelname.lower(),
+            )
+        except Exception:
+            # Do not break fuzzing/optimization flow if Mongo is unavailable
+            pass
+
+
+def attach_module_loggers():
+    """Attach a DB-backed handler to key modules (fuzzer/RL/executor) once."""
+    handler = ExploitDBLogHandler()
+    for name in ("ml_engine.fuzzing_module", "ml_engine.rl_agent", "ml_engine.exploit_executor"):
+        module_logger = logging.getLogger(name)
+        if not any(isinstance(h, ExploitDBLogHandler) for h in module_logger.handlers):
+            module_logger.addHandler(handler)
+            module_logger.propagate = True
 
 def scan_log(message: str, level: str = "info"):
     """
@@ -83,8 +128,122 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
         selected_exploits: List of exploit filenames to process (if None, process all)
     """
     # Set global scan_id for logging
-    global _current_scan_id
+    global _current_scan_id, _current_exploit_filename
     _current_scan_id = scan_id
+    _current_exploit_filename = None
+    attach_module_loggers()
+    
+    scan_log("=" * 50)
+    scan_log("STAGE 3: FUZZING & RL OPTIMIZATION")
+    if infinite:
+        scan_log("MODE: INFINITE FUZZING (Until Crash)")
+    if threads > 1:
+        scan_log(f"MODE: PARALLEL FUZZING ({threads} threads)")
+    if tomcat_direct:
+        scan_log("MODE: TOMCAT DIRECT ATTACK (CVE-based targeting)")
+    if auto_execute:
+        scan_log("MODE: AUTO-EXECUTE ENABLED (Exploits will be run against target)")
+    if smart_fuzz:
+        scan_log("MODE: SMART HYBRID FUZZER (3-Layer: Random + Boofuzz + LLM)")
+    
+    if remote_host:
+        scan_log(f"ATTACK MODE: Targeting {remote_host}:{remote_port}")
+    else:
+        scan_log("SIMULATION MODE: Fuzzing locally (no network traffic)")
+    scan_log("=" * 50)
+
+    # Find generated exploits
+    exploit_files = glob.glob(os.path.join(output_dir, "exploit_*.py"))
+    
+    if not exploit_files:
+        scan_log("No exploits found to optimize. Skipping Stage 3.", "warning")
+        return
+    
+    # Filter exploits if selected_exploits provided
+    if selected_exploits:
+        original_count = len(exploit_files)
+        # Extract basenames from user input (handles both full paths and filenames)
+        selected_basenames = [os.path.basename(s) for s in selected_exploits]
+        exploit_files = [f for f in exploit_files if os.path.basename(f) in selected_basenames]
+        scan_log(f"Filtered to {len(exploit_files)} selected exploits (from {original_count} total)")
+        if not exploit_files:
+            scan_log("No matching exploits found for selection. Skipping Stage 3.", "warning")
+            return
+
+    scan_log(f"Found {len(exploit_files)} exploits to optimize.")
+    
+    # Initialize Fuzzer - Choose strategy based on flags
+    # Priority: smart_fuzz > use_boofuzz > legacy
+    if smart_fuzz and remote_host:
+        from ml_engine.smart_fuzzer import SmartHybridFuzzer
+        fuzzer = SmartHybridFuzzer(target_ip=remote_host, target_port=remote_port)
+        scan_log("Using SMART HYBRID FUZZER (Layer 1: Random, Layer 2: Boofuzz, Layer 3: LLM)")
+    elif use_boofuzz and remote_host:
+        from ml_engine.boofuzz_engine import BoofuzzEngine
+        fuzzer = BoofuzzEngine(target_ip=remote_host, target_port=remote_port)
+        logger.info("Using BOOFUZZ engine for advanced fuzzing")
+    else:
+        fuzzer = Fuzzer(target_ip=remote_host, target_port=remote_port)
+    rl_agent = RLAgent()
+    
+    # Initialize ExploitExecutor if auto-execute is enabled
+    exploit_executor = None
+    if auto_execute and remote_host:
+        exploit_executor = ExploitExecutor(timeout=30, use_listener=False)
+        scan_log("ExploitExecutor initialized for auto-execution")
+    
+    # --- TOMCAT DIRECT ATTACK MODE ---
+    tomcat_paths = []
+    if tomcat_direct and remote_host and remote_port:
+        scan_log("="*50)
+        scan_log("TOMCAT DIRECT ATTACK PHASE")
+        scan_log("="*50)
+        try:
+            from ml_engine.tomcat_scanner import TomcatScanner
+            from ml_engine.tomcat_targets import get_all_attack_paths
+            
+            # Run Tomcat-specific scan
+            scanner = TomcatScanner(remote_host)
+            results = scanner.full_scan(remote_port)
+            
+            # Use Tomcat-specific paths instead of spider
+            tomcat_paths = get_all_attack_paths()
+            fuzzer.set_paths(tomcat_paths)
+            scan_log(f"Loaded {len(tomcat_paths)} Tomcat attack paths")
+            
+            # If credentials found, log critical
+            if results.get("credentials"):
+                scan_log(f"CREDENTIALS FOUND: {results['credentials']}", "warning")
+            
+            # If vulnerabilities found, continue with enhanced fuzzing
+            if results.get("vulnerabilities"):
+                for vuln in results["vulnerabilities"]:
+                    scan_log(f"VULNERABILITY: {vuln}", "warning")
+                    
+        except Exception as e:
+            scan_log(f"Tomcat scanner failed: {e}. Using default paths.", "warning")
+            tomcat_direct = False
+    
+    # --- ENDPOINT DISCOVERY (No Spider - use exploit metadata or defaults) ---
+    # Spider removed - endpoints are already embedded in Stage 2 exploit code
+    # or we use well-known attack paths based on target type
+    discovered_paths = []
+    if not tomcat_direct and remote_host and remote_port:
+        # Use common web attack paths instead of spidering
+        # These are generic paths likely to exist on most web servers
+        discovered_paths = [
+            "/", "/admin", "/login", "/api", "/manager", "/console",
+            "/admin.php", "/index.php", "/upload", "/files",
+            "/manager/html", "/manager/text", "/host-manager",
+            "/status", "/jmxrmi", "/invoker/JMXInvokerServlet"
+        ]
+        fuzzer.set_paths(discovered_paths)
+        scan_log(f"Using {len(discovered_paths)} default attack paths (Spider removed)")
+    elif tomcat_paths:
+        discovered_paths = tomcat_paths
+            
+    # Initialize generator for lazy loading
+    gen = None
     
     scan_log("=" * 50)
     scan_log("STAGE 3: FUZZING & RL OPTIMIZATION")
@@ -200,11 +359,14 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
 
     for exploit_file in exploit_files:
         file_name = os.path.basename(exploit_file)
+        _current_exploit_filename = file_name
         scan_log(f"Optimizing {file_name}...")
         
         # Set exploit status to in_progress
         if _current_scan_id:
             db_manager.update_exploit_status(_current_scan_id, file_name, "in_progress")
+            # Update attack status for real-time UI
+            db_manager.update_exploit_attack_status(_current_scan_id, file_name, "running", launched=True)
         
         exploit_log(file_name, "initialization", "Starting exploit optimization", "info")
         
@@ -521,6 +683,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                             exploit_log(file_name, "execution", f"Output: {exec_result.output[:500]}", "info")
                         if _current_scan_id:
                             db_manager.update_exploit_status(_current_scan_id, file_name, "completed")
+                            db_manager.update_exploit_attack_status(_current_scan_id, file_name, "completed")
                     else:
                         scan_log(f"  -> Exploit execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}", "error")
                         exploit_log(file_name, "execution", f"Execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}", "error", {
@@ -529,6 +692,16 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                         })
                         if _current_scan_id:
                             db_manager.update_exploit_status(_current_scan_id, file_name, "failed")
+                            db_manager.update_exploit_attack_status(_current_scan_id, file_name, "failed")
+                else:
+                    # Surface to UI that execution was intentionally skipped
+                    if auto_execute and not remote_host:
+                        reason = "no remote target provided"
+                    elif not auto_execute:
+                        reason = "auto_execute disabled"
+                    else:
+                        reason = "execution context unavailable"
+                    exploit_log(file_name, "execution", f"Execution skipped: {reason}", "info")
                 
                 if not infinite:
                     break
@@ -544,6 +717,9 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
             scan_log(f"Error optimizing {file_name}: {e}", "error")
             if _current_scan_id:
                 db_manager.update_exploit_status(_current_scan_id, file_name, "failed")
+                db_manager.update_exploit_attack_status(_current_scan_id, file_name, "failed")
+        finally:
+            _current_exploit_filename = None
 
     scan_log("Stage 3 Complete.")
 

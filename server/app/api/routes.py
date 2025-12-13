@@ -416,6 +416,38 @@ async def get_all_exploit_statuses(scan_id: str):
         logger.error(f"Failed to get exploit statuses: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/scan/{scan_id}/ready-exploits")
+async def get_ready_exploits(scan_id: str):
+    """
+    Get all exploits that are ready for attack (generated during Stage 2).
+    
+    This enables real-time launching - exploits can be attacked individually
+    as soon as they're generated, without waiting for Stage 2 to complete.
+    """
+    try:
+        from ml_engine.db_manager import DatabaseManager
+        db = DatabaseManager()
+        
+        if not db.connected:
+            return {"success": True, "data": {"exploits": []}}
+        
+        # Get ready exploits from the exploit_ready collection
+        exploits = db.get_ready_exploits(scan_id)
+        
+        return {
+            "success": True,
+            "data": {
+                "scan_id": scan_id,
+                "exploits": exploits,  # List of {filename, ready_for_attack, attack_launched, attack_status}
+                "count": len(exploits)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get ready exploits: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Network Recon Endpoints ---
 
 @router.post("/network/whitebox")

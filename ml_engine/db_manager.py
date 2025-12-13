@@ -33,7 +33,7 @@ class DatabaseManager:
         else:
             logger.warning("pymongo not installed. Database features disabled.")
 
-    def create_scan(self, project_name, root_path, file_size=0, recon_scan_id=None):
+    def create_scan(self, project_name, root_path, file_size=0, recon_scan_id=None, auto_execute=False, remote_host=None, remote_port=None):
         """Creates a new scan record and returns the scan_id.
         
         Args:
@@ -41,6 +41,9 @@ class DatabaseManager:
             root_path: Root path of the source code
             file_size: Total file size in bytes
             recon_scan_id: Optional recon scan ID to link this vulnerability scan to
+            auto_execute: Whether Stage 3 should auto-run exploits against the target
+            remote_host: Target IP address for exploit execution
+            remote_port: Target port for exploit execution
         """
         if not self.connected: return None
         
@@ -51,6 +54,8 @@ class DatabaseManager:
                 'root_path': root_path,
                 'recon_scan_id': recon_scan_id,  # Link to recon scan
                 'status': 'processing',
+                'remote_host': remote_host,  # Target IP for Stage 3
+                'remote_port': remote_port,  # Target Port for Stage 3
                 'stats': {
                     'total_files': 0,
                     'total_vulns': 0,
@@ -62,6 +67,7 @@ class DatabaseManager:
                 },
                 'date': datetime.utcnow().strftime('%Y-%m-%d'),
                 'file_size': file_size,
+                'auto_execute': bool(auto_execute),
                 'progress': {
                     'current_stage': 0,
                     'files_scanned': 0,
@@ -288,6 +294,124 @@ class DatabaseManager:
             self.client.close()
             self.connected = False
             logger.info("MongoDB connection closed.")
+
+    # ========== REAL-TIME EXPLOIT LAUNCH METHODS ==========
+    
+    def mark_exploit_ready(self, scan_id: str, exploit_filename: str, finding_id: str = None):
+        """
+        Mark an exploit as ready for attack (generated and saved).
+        Called by scan_stage_2 after each exploit is generated.
+        
+        Args:
+            scan_id: The scan ID
+            exploit_filename: Name of the exploit file (e.g., "exploit_XYZ.py")
+            finding_id: Optional finding_id to link the exploit
+        """
+        if not self.connected or not scan_id:
+            return
+        
+        try:
+            collection = self.db['exploit_ready']
+            collection.update_one(
+                {
+                    'scan_id': scan_id,
+                    'exploit_filename': exploit_filename
+                },
+                {
+                    '$set': {
+                        'ready_for_attack': True,
+                        'attack_launched': False,
+                        'attack_status': 'pending',
+                        'finding_id': finding_id,
+                        'ready_at': datetime.utcnow()
+                    },
+                    '$setOnInsert': {
+                        'scan_id': scan_id,
+                        'exploit_filename': exploit_filename,
+                        'created_at': datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+            logger.info(f"Marked exploit as ready: {exploit_filename}")
+        except Exception as e:
+            logger.error(f"Failed to mark exploit ready: {e}")
+
+    def update_exploit_attack_status(self, scan_id: str, exploit_filename: str, status: str, launched: bool = None):
+        """
+        Update the attack status of an exploit.
+        
+        Args:
+            scan_id: The scan ID
+            exploit_filename: Name of the exploit file
+            status: 'pending' | 'running' | 'completed' | 'failed'
+            launched: If True, sets attack_launched to True
+        """
+        if not self.connected or not scan_id:
+            return
+        
+        try:
+            collection = self.db['exploit_ready']
+            update_data = {
+                'attack_status': status,
+                'updated_at': datetime.utcnow()
+            }
+            if launched is not None:
+                update_data['attack_launched'] = launched
+            if status == 'running':
+                update_data['launched_at'] = datetime.utcnow()
+            
+            collection.update_one(
+                {
+                    'scan_id': scan_id,
+                    'exploit_filename': exploit_filename
+                },
+                {'$set': update_data}
+            )
+            logger.debug(f"Updated exploit attack status: {exploit_filename} -> {status}")
+        except Exception as e:
+            logger.error(f"Failed to update exploit attack status: {e}")
+
+    def get_ready_exploits(self, scan_id: str) -> list:
+        """
+        Get all exploits that are ready for attack for a scan.
+        
+        Args:
+            scan_id: The scan ID
+            
+        Returns:
+            List of exploit dicts with ready/launch status
+        """
+        if not self.connected or not scan_id:
+            return []
+        
+        try:
+            collection = self.db['exploit_ready']
+            exploits = list(collection.find(
+                {'scan_id': scan_id},
+                {
+                    '_id': 0,
+                    'exploit_filename': 1,
+                    'ready_for_attack': 1,
+                    'attack_launched': 1,
+                    'attack_status': 1,
+                    'finding_id': 1,
+                    'ready_at': 1,
+                    'launched_at': 1
+                }
+            ).sort('ready_at', 1))
+            
+            # Convert datetime to ISO format
+            for exp in exploits:
+                if 'ready_at' in exp and hasattr(exp['ready_at'], 'isoformat'):
+                    exp['ready_at'] = exp['ready_at'].isoformat()
+                if 'launched_at' in exp and hasattr(exp['launched_at'], 'isoformat'):
+                    exp['launched_at'] = exp['launched_at'].isoformat()
+            
+            return exploits
+        except Exception as e:
+            logger.error(f"Failed to get ready exploits: {e}")
+            return []
 
     # ========== RECON COLLECTION METHODS ==========
     
