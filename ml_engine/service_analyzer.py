@@ -267,6 +267,28 @@ Output ONLY the JSON object, no explanations."""
                 {"id": "CVE-2018-1002105", "description": "API Server privilege escalation", "severity": "Critical"},
                 {"id": "CVE-2020-8558", "description": "Kube-proxy bypass to localhost", "severity": "High"},
             ],
+            "jetty": [
+                {"id": "CVE-2023-26048", "description": "OutOfMemoryError via multipart request", "severity": "High"},
+                {"id": "CVE-2023-26049", "description": "Cookie parsing allows session hijacking", "severity": "Medium"},
+                {"id": "CVE-2023-36478", "description": "HTTP/2 HPACK integer overflow DoS", "severity": "High"},
+                {"id": "CVE-2021-28169", "description": "Information disclosure via %2e encoded URIs", "severity": "Medium"},
+                {"id": "CVE-2021-34429", "description": "URI normalization bypass leading to info disclosure", "severity": "Medium"},
+                {"id": "CVE-2017-9735", "description": "Timing attack in password comparison", "severity": "High"},
+                {"id": "CVE-2015-2080", "description": "Remote info disclosure via illegal characters", "severity": "High"},
+            ],
+            "weblogic": [
+                {"id": "CVE-2020-14882", "description": "Unauthenticated RCE via admin console", "severity": "Critical"},
+                {"id": "CVE-2019-2725", "description": "Unauthenticated RCE via XMLDecoder", "severity": "Critical"},
+                {"id": "CVE-2017-10271", "description": "RCE via WSAT SOAP requests", "severity": "Critical"},
+            ],
+            "wildfly": [
+                {"id": "CVE-2020-10740", "description": "Deserialization RCE via JBoss Marshalling", "severity": "Critical"},
+                {"id": "CVE-2017-12149", "description": "Deserialization RCE via HTTP invoker", "severity": "Critical"},
+            ],
+            "glassfish": [
+                {"id": "CVE-2017-1000028", "description": "Directory traversal via admin REST API", "severity": "High"},
+                {"id": "CVE-2011-0807", "description": "Authentication bypass in admin console", "severity": "Critical"},
+            ],
         }
         
         # Find matching service
@@ -854,6 +876,30 @@ Output ONLY the JSON object, no explanations."""
                     "# Edit /etc/docker/daemon.json to expose API"
                 ],
                 "notes": "Never expose Docker API unauthenticated in production. For CVE-2019-5736, use old runc version."
+            },
+            "jetty": {
+                "docker_image": f"jetty:{version if version != 'unknown' else 'latest'}",
+                "docker_run": f"docker run -d -p {port}:8080 --name jetty-lab jetty:{version if version != 'unknown' else 'latest'}",
+                "install_commands": [
+                    "apt-get update && apt-get install -y openjdk-11-jdk",
+                    "wget https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4.51.v20230217/jetty-distribution-9.4.51.v20230217.tar.gz",
+                    "tar -xzf jetty-distribution-*.tar.gz -C /opt/"
+                ],
+                "config_files": ["/opt/jetty/etc/jetty.xml", "/opt/jetty/start.ini"],
+                "test_paths": ["/", "/test/", "/console/"],
+                "notes": "Jetty is often embedded in other apps. Check for CVE-2023-26048/26049 in recent versions."
+            },
+            "weblogic": {
+                "docker_image": "container-registry.oracle.com/middleware/weblogic:12.2.1.4",
+                "docker_run": f"docker run -d -p {port}:7001 --name weblogic-lab container-registry.oracle.com/middleware/weblogic:12.2.1.4",
+                "install_commands": [
+                    "# Requires Oracle account for download",
+                    "# Download from: https://www.oracle.com/middleware/technologies/weblogic.html"
+                ],
+                "config_files": ["/u01/oracle/user_projects/domains/base_domain/config/config.xml"],
+                "default_creds": ["weblogic:welcome1", "admin:admin123"],
+                "test_paths": ["/console/", "/_async/AsyncResponseService", "/wls-wsat/CoordinatorPortType"],
+                "notes": "For CVE-2020-14882 testing, use versions < 12.2.1.4.0. Check /console for admin access."
             }
         }
         
