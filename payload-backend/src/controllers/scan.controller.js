@@ -285,6 +285,121 @@ class ScanController {
       });
     }
   }
+
+  /**
+   * Start attack with selected exploits (Resume Stage 3)
+   * @route POST /api/scans/:id/start-attack
+   */
+  async startAttack(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { selected_exploits = [], run_all = false } = req.body;
+
+      logger.info("Starting attack with selected exploits", {
+        scan_id: id,
+        selected_count: selected_exploits.length,
+        run_all,
+      });
+
+      // Validate input
+      if (!run_all && (!selected_exploits || selected_exploits.length === 0)) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "No exploits selected. Please select at least one exploit or set run_all to true.",
+        });
+      }
+
+      const attackResult = await pythonBridge.startAttack(id, {
+        selected_exploits,
+        run_all,
+      });
+
+      if (!attackResult.success) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: attackResult.error || "Failed to start attack",
+        });
+      }
+
+      logger.info("Attack started successfully", {
+        scan_id: id,
+        status: attackResult.data.status,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: attackResult.data.message || "Attack started successfully",
+        data: attackResult.data,
+      });
+    } catch (error) {
+      logger.error("Error starting attack", {
+        scan_id: req.params.id,
+        error: error.message,
+      });
+      next(error);
+    }
+  }
+
+  /**
+   * Get structured logs for a specific exploit
+   * @route GET /api/scans/:id/exploit-logs/:exploit_filename
+   */
+  async getExploitLogs(req, res, next) {
+    try {
+      const { id, exploit_filename } = req.params;
+
+      const result = await pythonBridge.getExploitLogs(id, exploit_filename);
+
+      if (!result.success) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: result.error || "Failed to get exploit logs",
+        });
+      }
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        data: result.data,
+      });
+    } catch (error) {
+      logger.error("Error getting exploit logs", {
+        scan_id: req.params.id,
+        exploit: req.params.exploit_filename,
+        error: error.message,
+      });
+      next(error);
+    }
+  }
+
+  /**
+   * Get status of all exploits for a scan
+   * @route GET /api/scans/:id/exploit-statuses
+   */
+  async getExploitStatuses(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      const result = await pythonBridge.getExploitStatuses(id);
+
+      if (!result.success) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: result.error || "Failed to get exploit statuses",
+        });
+      }
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        data: result.data,
+      });
+    } catch (error) {
+      logger.error("Error getting exploit statuses", {
+        scan_id: req.params.id,
+        error: error.message,
+      });
+      next(error);
+    }
+  }
 }
 
 export default new ScanController();

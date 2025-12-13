@@ -365,6 +365,57 @@ async def get_scan_logs(scan_id: str, offset: int = 0, limit: int = 100):
         logger.error(f"Failed to get scan logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/exploit-logs/{scan_id}/{exploit_filename}")
+async def get_exploit_logs(scan_id: str, exploit_filename: str):
+    """Get structured logs for a specific exploit."""
+    try:
+        from ml_engine.db_manager import DatabaseManager
+        db = DatabaseManager()
+        logs = db.get_exploit_logs(scan_id, exploit_filename)
+        status = db.get_exploit_status(scan_id, exploit_filename)
+        return {
+            "success": True,
+            "data": {
+                "exploit_filename": exploit_filename,
+                "scan_id": scan_id,
+                "status": status,  # not_started | in_progress | completed | failed
+                "logs": logs,
+                "log_count": len(logs)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get exploit logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/exploit-status/{scan_id}")
+async def get_all_exploit_statuses(scan_id: str):
+    """Get status of all exploits for a scan. Used to determine icon state in frontend."""
+    try:
+        from ml_engine.db_manager import DatabaseManager
+        db = DatabaseManager()
+        
+        # Get all unique exploit filenames for this scan
+        if not db.connected:
+            return {"success": True, "data": {"statuses": {}}}
+        
+        collection = db.db['exploit_logs']
+        exploit_filenames = collection.distinct('exploit_filename', {'scan_id': scan_id})
+        
+        statuses = {}
+        for filename in exploit_filenames:
+            statuses[filename] = db.get_exploit_status(scan_id, filename)
+        
+        return {
+            "success": True,
+            "data": {
+                "scan_id": scan_id,
+                "statuses": statuses  # {filename: status, ...}
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get exploit statuses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- Network Recon Endpoints ---
 
 @router.post("/network/whitebox")

@@ -551,6 +551,153 @@ class DatabaseManager:
             logger.error(f"Failed to fetch scan logs: {e}")
             return [], 0
 
+    # ========== EXPLOIT LOGS ==========
+    def save_exploit_log(self, scan_id: str, exploit_filename: str, phase: str, 
+                          message: str, level: str = "info", metrics: dict = None):
+        """
+        Save a structured log entry for a specific exploit.
+        Uses upsert to create document if needed, then $push to append log to array.
+        
+        Args:
+            scan_id: The scan ID
+            exploit_filename: Name of the exploit file (e.g., "exploit_XYZ.py")
+            phase: Execution phase - "fuzzing", "rl_optimization", "validation", "execution"
+            message: Log message
+            level: Log level - "info", "warning", "error", "critical", "success"
+            metrics: Optional dict with metrics (iteration, payload_size, latency_ms, rce_detected, etc.)
+        """
+        if not self.connected:
+            return None
+        
+        try:
+            collection = self.db['exploit_logs']
+            
+            # Create the log entry to push to the array
+            log_entry = {
+                'timestamp': datetime.utcnow(),
+                'phase': phase,
+                'message': message,
+                'level': level.lower(),
+                'metrics': metrics or {}
+            }
+            
+            # Upsert: create document if not exists, always push log to array
+            collection.update_one(
+                {
+                    'scan_id': scan_id,
+                    'exploit_filename': exploit_filename
+                },
+                {
+                    '$push': {'logs': log_entry},
+                    '$set': {'updated_at': datetime.utcnow()},
+                    '$setOnInsert': {
+                        'scan_id': scan_id,
+                        'exploit_filename': exploit_filename,
+                        'status': 'in_progress',
+                        'created_at': datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            # Don't spam error logs for log failures
+            pass
+        return None
+    
+    def update_exploit_status(self, scan_id: str, exploit_filename: str, status: str):
+        """
+        Update the status of an exploit execution.
+        
+        Args:
+            scan_id: The scan ID
+            exploit_filename: Name of the exploit file
+            status: "not_started", "in_progress", "completed", "failed"
+        """
+        if not self.connected:
+            return
+        
+        try:
+            collection = self.db['exploit_logs']
+            collection.update_one(
+                {
+                    'scan_id': scan_id,
+                    'exploit_filename': exploit_filename
+                },
+                {
+                    '$set': {
+                        'status': status,
+                        'updated_at': datetime.utcnow()
+                    }
+                },
+                upsert=True
+            )
+        except Exception as e:
+            logger.error(f"Failed to update exploit status: {e}")
+    
+    def get_exploit_logs(self, scan_id: str, exploit_filename: str) -> list:
+        """
+        Retrieve all logs for a specific exploit.
+        
+        Args:
+            scan_id: The scan ID
+            exploit_filename: Name of the exploit file
+            
+        Returns:
+            List of log entries sorted by timestamp
+        """
+        if not self.connected:
+            return []
+        
+        try:
+            collection = self.db['exploit_logs']
+            doc = collection.find_one({
+                'scan_id': scan_id,
+                'exploit_filename': exploit_filename
+            })
+            
+            if not doc or 'logs' not in doc:
+                return []
+            
+            logs = doc['logs']
+            
+            # Convert timestamps to ISO format for JSON serialization
+            for i, log in enumerate(logs):
+                log['_id'] = f"{doc['_id']}_{i}"  # Create unique ID per log entry
+                if 'timestamp' in log and hasattr(log['timestamp'], 'isoformat'):
+                    log['timestamp'] = log['timestamp'].isoformat()
+            
+            return logs
+        except Exception as e:
+            logger.error(f"Failed to fetch exploit logs: {e}")
+            return []
+    
+    def get_exploit_status(self, scan_id: str, exploit_filename: str) -> str:
+        """
+        Get the execution status of an exploit.
+        
+        Returns:
+            "not_started" | "in_progress" | "completed" | "failed"
+        """
+        if not self.connected:
+            return "not_started"
+        
+        try:
+            collection = self.db['exploit_logs']
+            
+            doc = collection.find_one({
+                'scan_id': scan_id,
+                'exploit_filename': exploit_filename
+            })
+            
+            if not doc:
+                return "not_started"
+            
+            return doc.get('status', 'in_progress')
+        except Exception as e:
+            logger.error(f"Failed to get exploit status: {e}")
+            return "not_started"
+
     def clear_database(self):
         """Cleans all data from the database (scans, files, findings, logs)."""
         if not self.connected: return False
@@ -560,7 +707,7 @@ class DatabaseManager:
             # Or simpler: dropDatabase() but we might want to keep some config?
             # Safe approach: Delete all documents from known collections
             
-            collections = ['scans', 'files', 'findings', 'exploits', 'agent_logs', 'recon', 'scan_logs']
+            collections = ['scans', 'files', 'findings', 'exploits', 'agent_logs', 'recon', 'scan_logs', 'exploit_logs']
             
             for col_name in collections:
                 self.db[col_name].delete_many({})

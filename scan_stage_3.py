@@ -45,6 +45,34 @@ def scan_log(message: str, level: str = "info"):
         except:
             pass  # Don't fail scan if log saving fails
 
+def exploit_log(exploit_filename: str, phase: str, message: str, level: str = "info", metrics: dict = None):
+    """
+    Log a structured entry for a specific exploit to the exploit_logs collection.
+    
+    Args:
+        exploit_filename: Name of the exploit file (e.g., "exploit_XYZ.py")
+        phase: "fuzzing", "rl_optimization", "validation", "execution"
+        message: Log message
+        level: "info", "warning", "error", "critical", "success"
+        metrics: Optional dict with metrics
+    """
+    # Also log to general scan log for visibility
+    scan_log(f"[{exploit_filename}] {message}", level)
+    
+    # Save structured log to exploit_logs collection
+    if _current_scan_id:
+        try:
+            db_manager.save_exploit_log(
+                scan_id=_current_scan_id,
+                exploit_filename=exploit_filename,
+                phase=phase,
+                message=message,
+                level=level,
+                metrics=metrics
+            )
+        except:
+            pass  # Don't fail scan if log saving fails
+
 def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False, smart_fuzz=True, selected_exploits=None):
     """
     Stage 3: Fuzzing and RL Optimization of generated exploits.
@@ -174,6 +202,12 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
         file_name = os.path.basename(exploit_file)
         scan_log(f"Optimizing {file_name}...")
         
+        # Set exploit status to in_progress
+        if _current_scan_id:
+            db_manager.update_exploit_status(_current_scan_id, file_name, "in_progress")
+        
+        exploit_log(file_name, "initialization", "Starting exploit optimization", "info")
+        
         try:
             # Read the exploit code
             with open(exploit_file, 'r', encoding='utf-8') as f:
@@ -190,8 +224,9 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                 crashes = []
                 
                 attempt = 0
-                while attempt <= max_retries:
+                while attempt < max_retries:
                     attempt += 1
+                    exploit_log(file_name, "fuzzing", f"Running fuzzer attempt {attempt}/{max_retries}", "info", {"attempt": attempt, "max_retries": max_retries})
                     scan_log(f"  -> Running Fuzzer (Attempt {attempt}/{max_retries})...")
                     
                     # Load payload (re-load in case it was regenerated)
@@ -206,28 +241,53 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     else:
                         crashes = fuzzer.run_fuzzing_session(base_payload, iterations=10)
                     
+                    # Log fuzzer session result regardless of crash count
+                    exploit_log(file_name, "fuzzing", f"Fuzzer session finished: {len(crashes)} findings", "info" if crashes else "warning", {
+                        "crash_count": len(crashes),
+                        "attempt": attempt
+                    })
+                    
                     if crashes:
                         # Analyze findings to report specific type
                         finding_types = set()
-                        for c in crashes:
+                        for i, c in enumerate(crashes):
                             err = c.get("error", "")
+                            latency = c.get("metrics", {}).get("time_ms", 0)
                             if "High Latency" in err:
                                 finding_types.add("DoS (High Latency)")
+                                exploit_log(file_name, "fuzzing", f"Iteration {i}: High Latency ({latency:.2f}ms) detected!", "warning", {
+                                    "iteration": i,
+                                    "latency_ms": latency,
+                                    "dos_detected": True
+                                })
                             elif "RCE" in err:
                                 finding_types.add("RCE (Confirmed)")
+                                exploit_log(file_name, "fuzzing", f"Iteration {i}: RCE pattern detected!", "success", {
+                                    "iteration": i,
+                                    "rce_detected": True
+                                })
                                 # Extract Date if present
                                 if "Date:" in err:
                                     date_str = err.split("Date: ")[1].strip(")")
                                     scan_log(f"  -> [!!!] SYSTEM INFILTRATED. Server Time: {date_str}", "warning")
                             else:
                                 finding_types.add("Crash/Error")
+                                exploit_log(file_name, "fuzzing", f"Iteration {i}: Crash/Error detected", "warning", {
+                                    "iteration": i,
+                                    "error": err[:200] if err else "Unknown"
+                                })
                         
                         types_str = ", ".join(finding_types)
                         scan_log(f"  -> Fuzzer found {len(crashes)} findings! ({types_str})")
+                        exploit_log(file_name, "fuzzing", f"Fuzzer complete: {len(crashes)} findings ({types_str})", "success", {
+                            "crash_count": len(crashes),
+                            "finding_types": list(finding_types)
+                        })
                         break # Success!
                     
                     # If no crashes and we have retries left, REGENERATE
                     if attempt < max_retries and remote_host:
+                        exploit_log(file_name, "fuzzing", "No findings - initiating self-healing...", "warning")
                         scan_log("  -> Fuzzing failed (0 crashes). Initiating Self-Healing...", "warning")
                         
                         # INTELLIGENT LOOP: Pick a relevant path if available
@@ -299,6 +359,10 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                 )
                 
                 # 3. RL Optimization Phase (with shared Fuzzer and Feedback)
+                exploit_log(file_name, "rl_optimization", "Starting RL Agent optimization", "info", {
+                    "vuln_type": vuln_type,
+                    "crash_count": len(crashes)
+                })
                 scan_log("  -> Running RL Agent with feedback context...")
                 optimized_payload = rl_agent.optimize_exploit(
                     base_payload, 
@@ -308,6 +372,12 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     fuzzer=fuzzer,      # Share fuzzer (keeps spider paths)
                     feedback=feedback   # Pass crash context
                 )
+                
+                # Log RL agent completion with payload details
+                exploit_log(file_name, "rl_optimization", f"RL Agent complete: Optimized payload to {len(optimized_payload)} bytes", "success", {
+                    "payload_size": len(optimized_payload),
+                    "original_size": len(base_payload)
+                })
                 
                 # 4. Validation Phase - Test the optimized payload
                 validation_status = "UNTESTED"
@@ -331,6 +401,13 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                         validation_status = "NO_RESPONSE"
                     
                     scan_log(f"  -> Validation: {validation_status} (Latency: {validation_latency:.1f}ms)")
+                    exploit_log(file_name, "validation", f"Validation result: {validation_status}", 
+                                "success" if "CONFIRMED" in validation_status else "info", {
+                        "status": validation_status,
+                        "latency_ms": validation_latency,
+                        "rce_detected": validation_status == "RCE_CONFIRMED",
+                        "dos_detected": validation_status == "DOS_CONFIRMED"
+                    })
                 
                 # Append optimization results to the exploit file as comments
                 with open(exploit_file, 'a', encoding='utf-8') as f:
@@ -387,6 +464,11 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                         scan_log("  -> Created new 'payloads' list with optimized payload.")
 
                 scan_log(f"  -> Optimization complete for {file_name}")
+                exploit_log(file_name, "optimization", "Exploit optimization complete", "success")
+                
+                # Update status to completed (unless we're about to execute)
+                if _current_scan_id and not exploit_executor:
+                    db_manager.update_exploit_status(_current_scan_id, file_name, "completed")
                 
                 # --- EXPLOIT EXECUTION PHASE ---
                 if exploit_executor and remote_host:
@@ -394,6 +476,10 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     scan_log("EXPLOIT EXECUTION PHASE")
                     scan_log("="*50)
                     scan_log(f"  -> Executing exploit: {file_name}")
+                    exploit_log(file_name, "execution", "Starting exploit execution", "info", {
+                        "target_ip": remote_host,
+                        "target_port": remote_port
+                    })
                     
                     exec_result = exploit_executor.execute_exploit(
                         exploit_file, 
@@ -404,16 +490,45 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     if exec_result.rce_detected:
                         scan_log(f"  -> *** RCE SUCCESSFUL! *** Exploit: {file_name}", "warning")
                         scan_log(f"  -> Output: {exec_result.output[:2000] if exec_result.output else 'N/A'}", "warning")
+                        # Log the full RCE success with output
+                        exploit_log(file_name, "execution", "*** RCE SUCCESSFUL! ***", "success", {
+                            "rce_detected": True
+                        })
+                        # Log the full execution output
+                        if exec_result.output:
+                            exploit_log(file_name, "execution", f"Execution Output:\n{exec_result.output[:2000]}", "info", {
+                                "output_length": len(exec_result.output)
+                            })
+                        if _current_scan_id:
+                            db_manager.update_exploit_status(_current_scan_id, file_name, "completed")
                         # Append RCE confirmation to exploit file
                         with open(exploit_file, 'a', encoding='utf-8') as f:
                             f.write(f"\n# *** RCE CONFIRMED on {remote_host}:{remote_port} ***\n")
                     elif exec_result.dos_detected:
                         scan_log(f"  -> DoS detected: {file_name}", "warning")
+                        exploit_log(file_name, "execution", "DoS detected - Target may be vulnerable to denial of service", "success", {
+                            "dos_detected": True
+                        })
+                        if _current_scan_id:
+                            db_manager.update_exploit_status(_current_scan_id, file_name, "completed")
                     elif exec_result.success:
                         scan_log(f"  -> Exploit executed successfully: {file_name}")
                         scan_log(f"  -> Output: {exec_result.output[:200] if exec_result.output else 'N/A'}")
+                        exploit_log(file_name, "execution", "Exploit executed successfully", "success", {
+                            "success": True
+                        })
+                        if exec_result.output:
+                            exploit_log(file_name, "execution", f"Output: {exec_result.output[:500]}", "info")
+                        if _current_scan_id:
+                            db_manager.update_exploit_status(_current_scan_id, file_name, "completed")
                     else:
                         scan_log(f"  -> Exploit execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}", "error")
+                        exploit_log(file_name, "execution", f"Execution failed: {exec_result.error[:200] if exec_result.error else 'Unknown error'}", "error", {
+                            "success": False,
+                            "error": exec_result.error[:200] if exec_result.error else "Unknown error"
+                        })
+                        if _current_scan_id:
+                            db_manager.update_exploit_status(_current_scan_id, file_name, "failed")
                 
                 if not infinite:
                     break
@@ -427,6 +542,8 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
 
         except Exception as e:
             scan_log(f"Error optimizing {file_name}: {e}", "error")
+            if _current_scan_id:
+                db_manager.update_exploit_status(_current_scan_id, file_name, "failed")
 
     scan_log("Stage 3 Complete.")
 

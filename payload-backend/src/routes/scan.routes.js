@@ -108,6 +108,27 @@ router.get("/:id/logs", async (req, res, next) => {
 });
 
 /**
+ * @route   POST /api/scans/:id/start-attack
+ * @desc    Start attack phase (Stage 3) with selected exploits
+ * @access  Public
+ */
+router.post("/:id/start-attack", scanController.startAttack.bind(scanController));
+
+/**
+ * @route   GET /api/scans/:id/exploit-logs/:exploit_filename
+ * @desc    Get structured logs for a specific exploit
+ * @access  Public
+ */
+router.get("/:id/exploit-logs/:exploit_filename", scanController.getExploitLogs.bind(scanController));
+
+/**
+ * @route   GET /api/scans/:id/exploit-statuses
+ * @desc    Get status of all exploits for a scan
+ * @access  Public
+ */
+router.get("/:id/exploit-statuses", scanController.getExploitStatuses.bind(scanController));
+
+/**
  * @route   DELETE /api/scans/all
  * @desc    Clear all scans and findings from database
  * @access  Public

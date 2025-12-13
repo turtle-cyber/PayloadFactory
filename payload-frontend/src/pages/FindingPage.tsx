@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Download, Trash } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  ArrowRight,
+  Download,
+  Trash,
+  Loader2,
+  MessageSquareCode,
+} from "lucide-react";
 import { http } from "../utils/http";
-import { GET_FINDINGS } from "../endpoints/resultspage.endpoints";
+import { GET_FINDINGS, START_ATTACK } from "../endpoints/resultspage.endpoints";
 import { toast } from "sonner";
 import { useParams } from "react-router-dom";
+import ExploitLogPopup from "@/components/ExploitLogPopup";
 
 interface Finding {
   severity: "Critical" | "High" | "Medium" | "Low" | "Unknown";
@@ -78,6 +85,54 @@ const FindingPage = () => {
   const { findingData, findingLoading } = useGetFindings(scanId);
 
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [isLaunching, setIsLaunching] = useState<boolean>(false);
+
+  // Exploit logs popup state
+  const [exploitStatuses, setExploitStatuses] = useState<
+    Record<string, string>
+  >({});
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [selectedExploit, setSelectedExploit] = useState<string>("");
+
+  // Fetch exploit statuses after launch
+  const fetchExploitStatuses = useCallback(async () => {
+    if (!scanId) return;
+    try {
+      const response = await http.get(`/scans/${scanId}/exploit-statuses`);
+      if (response.data?.success && response.data?.data?.statuses) {
+        setExploitStatuses(response.data.data.statuses);
+      }
+    } catch (error) {
+      console.error("Failed to fetch exploit statuses:", error);
+    }
+  }, [scanId]);
+
+  // Poll for statuses after launch
+  useEffect(() => {
+    if (scanId) {
+      fetchExploitStatuses();
+      const interval = setInterval(fetchExploitStatuses, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [scanId, fetchExploitStatuses]);
+
+  // Handle log icon click
+  const handleViewLogs = (exploitPath: string) => {
+    const filename =
+      exploitPath.split("\\").pop() || exploitPath.split("/").pop() || "";
+    if (!filename) return;
+
+    setSelectedExploit(filename);
+    setIsPopupOpen(true);
+  };
+
+  // Get status for an exploit
+  const getExploitStatus = (exploitPath: string | null): string => {
+    if (!exploitPath) return "not_started";
+    const filename =
+      exploitPath.split("\\").pop() || exploitPath.split("/").pop() || "";
+    return exploitStatuses[filename] || "not_started";
+  };
 
   const findings = findingData?.findings || [];
   const severityCounts = findingData?.counts || {
@@ -177,6 +232,69 @@ const FindingPage = () => {
     } catch (error) {
       toast.error("Error downloading exploit file");
       console.error("Download error:", error);
+    }
+  };
+
+  const handleLaunchAttack = async () => {
+    if (selectedRows.size === 0) {
+      toast.error("Please select at least one exploit to launch");
+      return;
+    }
+
+    // Get exploit paths from selected rows
+    const selectedExploits: string[] = [];
+    selectedRows.forEach((index) => {
+      const finding = findings[index];
+      if (finding?.exploit_path) {
+        // Extract just the filename from the path
+        const filename =
+          finding.exploit_path.split("\\").pop() ||
+          finding.exploit_path.split("/").pop();
+        if (filename) {
+          selectedExploits.push(filename);
+        }
+      }
+    });
+
+    if (selectedExploits.length === 0) {
+      toast.error("No valid exploits found in selection");
+      return;
+    }
+
+    setIsLaunching(true);
+    try {
+      toast.info(
+        `Launching ${selectedExploits.length} exploit(s) for Stage 3 evolution...`
+      );
+
+      const response = await http.post(
+        `${START_ATTACK}/${scanId}/start-attack`,
+        {
+          selected_exploits: selectedExploits,
+          run_all: false,
+        }
+      );
+
+      if (response.status === 200 && response.data?.success) {
+        toast.success(
+          `Attack started! ${selectedExploits.length} exploit(s) will be evolved and executed.`
+        );
+        // Clear selection after successful launch
+        setSelectedRows(new Set());
+      } else {
+        toast.error(response.data?.message || "Failed to start attack");
+      }
+    } catch (error: unknown) {
+      console.error("Launch attack error:", error);
+      const axiosError = error as {
+        response?: { data?: { message?: string } };
+      };
+      toast.error(
+        axiosError.response?.data?.message ||
+          "Error launching attack. Please try again."
+      );
+    } finally {
+      setIsLaunching(false);
     }
   };
 
@@ -315,6 +433,9 @@ const FindingPage = () => {
                           }`}
                         />
                       </th>
+                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                        Logs
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -376,6 +497,46 @@ const FindingPage = () => {
                             }`}
                           />
                         </td>
+                        <td>
+                          {/* Log icon - status-based coloring */}
+                          {finding.exploit_path ? (
+                            <button
+                              onClick={() =>
+                                handleViewLogs(finding.exploit_path!)
+                              }
+                              className={`p-2 rounded-full transition-colors ${
+                                getExploitStatus(finding.exploit_path) ===
+                                "completed"
+                                  ? "bg-green-900/30 hover:bg-green-800/50 text-green-400"
+                                  : getExploitStatus(finding.exploit_path) ===
+                                    "in_progress"
+                                  ? "bg-yellow-900/30 hover:bg-yellow-800/50 text-yellow-400 animate-pulse"
+                                  : getExploitStatus(finding.exploit_path) ===
+                                    "failed"
+                                  ? "bg-red-900/30 hover:bg-red-800/50 text-red-400"
+                                  : "bg-gray-800 hover:bg-gray-700 text-gray-500"
+                              }`}
+                              title={
+                                getExploitStatus(finding.exploit_path) ===
+                                "completed"
+                                  ? "Attack completed - View logs"
+                                  : getExploitStatus(finding.exploit_path) ===
+                                    "in_progress"
+                                  ? "Attack in progress"
+                                  : getExploitStatus(finding.exploit_path) ===
+                                    "failed"
+                                  ? "Attack failed - View logs"
+                                  : "Not executed yet"
+                              }
+                            >
+                              <MessageSquareCode size={16} />
+                            </button>
+                          ) : (
+                            <div className="p-2 rounded-full bg-gray-800 text-gray-600 cursor-not-allowed">
+                              <MessageSquareCode size={16} />
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -387,19 +548,37 @@ const FindingPage = () => {
           {/* Launch Button */}
           <div className="flex justify-center mt-5">
             <button
-              disabled={selectedRows.size === 0}
-              className={`border w-32 rounded-lg px-4 py-2 flex justify-center items-center gap-x-2 transition-all duration-300 ${
-                selectedRows.size > 0
+              onClick={handleLaunchAttack}
+              disabled={selectedRows.size === 0 || isLaunching}
+              className={`border w-40 rounded-lg px-4 py-2 flex justify-center items-center gap-x-2 transition-all duration-300 ${
+                selectedRows.size > 0 && !isLaunching
                   ? "bg-[#ff11111f] border-[#795a5a] text-gray-200 hover:bg-[#ff111145] hover:shadow-[0_0_20px_rgba(255,50,50,0.3)]"
                   : "bg-gray-800/30 border-gray-700 text-gray-600 cursor-not-allowed"
               }`}
             >
-              <span>Launch</span>
-              <ArrowRight className="w-4 h-4" />
+              {isLaunching ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Launching...</span>
+                </>
+              ) : (
+                <>
+                  <span>Launch Attack</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Exploit Log Popup */}
+      <ExploitLogPopup
+        isOpen={isPopupOpen}
+        onClose={() => setIsPopupOpen(false)}
+        exploitFilename={selectedExploit}
+        scanId={scanId}
+      />
     </div>
   );
 };

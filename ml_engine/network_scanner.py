@@ -193,12 +193,9 @@ class NetworkScanner:
             args.append('-p-')
         elif scan_config.get('port_range'):
             args.append(f"-p {scan_config['port_range']}")
-        elif scan_type == 'quick':
-            args.append('--top-ports 100')
         elif scan_type == 'aggressive':
             args.append('-p-')
-        else:
-            args.append('--top-ports 1000')
+        # else: No port flag - let nmap use its default (top 1000 ports)
 
         if scan_config.get('fragment'): args.append('-f')
         if scan_config.get('mtu'): args.append(f"--mtu {scan_config['mtu']}")
@@ -275,10 +272,10 @@ class NetworkScanner:
                 port_str = ",".join(map(str, ports))
                 config['port_range'] = port_str
             else:
+                # No ports specified - use nmap's default behavior (top 1000 ports)
+                # Don't add any port flag - let nmap use its defaults
                 if deep_scan:
-                    config['all_ports'] = True
-                else:
-                    config['type'] = 'quick'  # Quick scan if no ports specified
+                    config['all_ports'] = True  # Full port scan for deep scan only
 
             # Resolve Target and Build Args
             clean_ip, hostname = self.parse_target(ip)

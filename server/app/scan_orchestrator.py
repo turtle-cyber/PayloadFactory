@@ -286,10 +286,13 @@ class ScanOrchestrator:
         if not scan:
             return {"error": "Scan not found", "scan_id": scan_id}
         
-        # Check if scan is in awaiting-selection status
-        if scan.get("status") != ScanStatus.AWAITING_SELECTION:
+        # Check if scan is in a valid status for launching Stage 3
+        # Allow: awaiting-selection (normal flow), stage-2 (exploits already generated), completed (re-run)
+        valid_statuses = [ScanStatus.AWAITING_SELECTION, ScanStatus.STAGE_2, ScanStatus.COMPLETED]
+        current_status = scan.get("status")
+        if current_status not in valid_statuses:
             return {
-                "error": f"Scan is not awaiting selection. Current status: {scan.get('status')}",
+                "error": f"Cannot start attack. Scan must be in stage-2, awaiting-selection, or completed. Current status: {current_status}",
                 "scan_id": scan_id
             }
         

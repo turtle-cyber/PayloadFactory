@@ -331,6 +331,125 @@ class PythonBridgeService {
       };
     }
   }
+
+  /**
+   * Start attack with selected exploits (Resume Stage 3)
+   * @param {string} scanId - The scan ID to resume
+   * @param {Object} attackConfig - Attack configuration
+   * @param {Array} attackConfig.selected_exploits - List of exploit filenames to run
+   * @param {boolean} attackConfig.run_all - If true, run all exploits
+   * @returns {Promise<Object>} Response with status
+   */
+  async startAttack(scanId, attackConfig) {
+    try {
+      logger.info("Starting attack with selected exploits via Python backend", {
+        scan_id: scanId,
+        selected_count: attackConfig.selected_exploits?.length || 0,
+        run_all: attackConfig.run_all,
+      });
+
+      const response = await this.axiosInstance.post(
+        `/scan/${scanId}/start-attack`,
+        attackConfig,
+        {
+          timeout: 60000, // 1 minute for attack initiation
+        }
+      );
+
+      logger.info("Attack started successfully", {
+        scan_id: scanId,
+        status: response.data.status,
+      });
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      logger.error("Failed to start attack", {
+        scan_id: scanId,
+        error: error.message,
+        response: error.response?.data,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to start attack",
+      };
+    }
+  }
+
+  /**
+   * Get structured logs for a specific exploit
+   * @param {string} scanId - The scan ID
+   * @param {string} exploitFilename - Name of the exploit file
+   * @returns {Promise<Object>} Exploit logs and status
+   */
+  async getExploitLogs(scanId, exploitFilename) {
+    try {
+      logger.debug("Fetching exploit logs", {
+        scan_id: scanId,
+        exploit: exploitFilename,
+      });
+
+      const response = await this.axiosInstance.get(
+        `/exploit-logs/${scanId}/${encodeURIComponent(exploitFilename)}`
+      );
+
+      return {
+        success: true,
+        data: response.data.data,
+      };
+    } catch (error) {
+      logger.error("Failed to get exploit logs", {
+        scan_id: scanId,
+        exploit: exploitFilename,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to get exploit logs",
+      };
+    }
+  }
+
+  /**
+   * Get status of all exploits for a scan
+   * @param {string} scanId - The scan ID
+   * @returns {Promise<Object>} Map of exploit filename to status
+   */
+  async getExploitStatuses(scanId) {
+    try {
+      const response = await this.axiosInstance.get(
+        `/exploit-status/${scanId}`
+      );
+
+      return {
+        success: true,
+        data: response.data.data,
+      };
+    } catch (error) {
+      logger.error("Failed to get exploit statuses", {
+        scan_id: scanId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to get exploit statuses",
+      };
+    }
+  }
 }
 
 export default new PythonBridgeService();
