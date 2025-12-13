@@ -599,6 +599,62 @@ const ReconPage = () => {
             </div>
           )}
 
+          {/* Guide Card - only show when a service is selected */}
+          {selectedIndex !== null && (
+            <div className="rounded-lg bg-[#ca8e8e1a] from-[#FFFFFF61] to-[#B4B4B41F]">
+              <div className="">
+                <GuideCard
+                  analysis={analysis}
+                  serviceName={
+                    services[selectedIndex]?.product ||
+                    services[selectedIndex]?.service
+                  }
+                  port={services[selectedIndex]?.port}
+                  protocol={services[selectedIndex]?.service}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Acknowledgment Checkbox - only show when a service is selected */}
+          {selectedIndex !== null && (
+            <div className="flex items-center gap-3 bg-transparent rounded-lg">
+              <input
+                type="checkbox"
+                id="guide-acknowledgment"
+                checked={acknowledgmentChecked}
+                onChange={(e) => handleAcknowledgmentChange(e.target.checked)}
+                disabled={!analysis}
+                className="w-5 h-5 cursor-pointer accent-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <label
+                htmlFor="guide-acknowledgment"
+                className={`text-sm cursor-pointer select-none ${
+                  analysis ? "text-gray-300" : "text-gray-500"
+                }`}
+              >
+                To proceed, acknowledge that you've gone through the guide.
+              </label>
+            </div>
+          )}
+
+          {/* Exploit Generation Window - only show when a service is selected */}
+          {selectedIndex !== null && (
+            <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
+              <ExploitGenerationCard
+                mode={mode}
+                setMode={setMode}
+                selectedFile={selectedFile}
+                onFileSelect={setSelectedFile}
+                onGenerate={
+                  mode === "whitebox" ? handleWhitebox : handleBlackbox
+                }
+                isGenerating={isAnalyzing}
+                disabled={!acknowledgmentChecked}
+              />
+            </div>
+          )}
+
           {/* Scan Progress Box - Detailed */}
           {(scanProgress || processingProgress) && (
             <div className="glassmorphism-card rounded-xl p-6 border border-blue-500/30 bg-blue-500/5">
@@ -743,62 +799,6 @@ const ReconPage = () => {
                   )}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Guide Card - only show when a service is selected */}
-          {selectedIndex !== null && (
-            <div className="rounded-lg bg-[#ca8e8e1a] from-[#FFFFFF61] to-[#B4B4B41F]">
-              <div className="">
-                <GuideCard
-                  analysis={analysis}
-                  serviceName={
-                    services[selectedIndex]?.product ||
-                    services[selectedIndex]?.service
-                  }
-                  port={services[selectedIndex]?.port}
-                  protocol={services[selectedIndex]?.service}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Acknowledgment Checkbox - only show when a service is selected */}
-          {selectedIndex !== null && (
-            <div className="flex items-center gap-3 bg-transparent rounded-lg">
-              <input
-                type="checkbox"
-                id="guide-acknowledgment"
-                checked={acknowledgmentChecked}
-                onChange={(e) => handleAcknowledgmentChange(e.target.checked)}
-                disabled={!analysis}
-                className="w-5 h-5 cursor-pointer accent-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <label
-                htmlFor="guide-acknowledgment"
-                className={`text-sm cursor-pointer select-none ${
-                  analysis ? "text-gray-300" : "text-gray-500"
-                }`}
-              >
-                To proceed, acknowledge that you've gone through the guide.
-              </label>
-            </div>
-          )}
-
-          {/* Exploit Generation Window - only show when a service is selected */}
-          {selectedIndex !== null && (
-            <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-              <ExploitGenerationCard
-                mode={mode}
-                setMode={setMode}
-                selectedFile={selectedFile}
-                onFileSelect={setSelectedFile}
-                onGenerate={
-                  mode === "whitebox" ? handleWhitebox : handleBlackbox
-                }
-                isGenerating={isAnalyzing}
-                disabled={!acknowledgmentChecked}
-              />
             </div>
           )}
 
