@@ -21,13 +21,13 @@ const formatStatus = (status: string | undefined | null) => {
   }
   const formattedStatus = status.toLowerCase();
   if (formattedStatus === "completed") {
-    return "bg-green-500/20 text-green-400 p-2 rounded-md";
+    return "bg-green-500/20 text-green-400 p-2 rounded-md text-sm";
   } else if (formattedStatus === "failed") {
-    return "bg-red-500/20 text-red-400 p-2 rounded-md";
+    return "bg-red-500/20 text-red-400 p-2 rounded-md text-sm";
   } else if (formattedStatus === "in_progress") {
-    return "bg-blue-500/20 text-blue-400 p-2 rounded-md";
+    return "bg-blue-500/20 text-blue-400 p-2 rounded-md text-sm";
   } else {
-    return "bg-gray-500/20 text-gray-400 p-2 rounded-md";
+    return "bg-gray-500/20 text-gray-400 p-2 rounded-md text-sm";
   }
 };
 
@@ -44,10 +44,10 @@ const ReconHistoryTable: React.FC<ReconHistoryTableProps> = ({
   return (
     <>
       <div className="py-2 px-4 rounded-lg bg-[#2f2f2f] flex items-center justify-between">
-        <span>Recon History</span>
+        <span className="font-mono">Recon History</span>
       </div>
 
-      <div className="bg-[#1a1714] p-4 mt-2 h-[50vh] overflow-auto rounded-lg">
+      <div className="bg-[#1a1714] p-4 mt-2 h-[70vh] overflow-auto rounded-lg">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
@@ -66,20 +66,20 @@ const ReconHistoryTable: React.FC<ReconHistoryTableProps> = ({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-700">
-                  <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                  <th className="text-left p-4 font-semibold text-gray-400">
                     Name
                   </th>
-                  <th className="text-left p-4 text-sm font-semibold text-gray-400">
-                    IP
+                  <th className="text-left p-4 font-semibold text-gray-400">
+                    IP / URL / Domain
                   </th>
-                  <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                  <th className="text-left p-4 font-semibold text-gray-400">
                     Status
                   </th>
-                  <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                  <th className="text-left p-4 font-semibold text-gray-400">
                     Execution Time
                   </th>
-                  <th className="text-left p-4 text-sm font-semibold text-gray-400">
-                    Date
+                  <th className="text-left p-4 font-semibold text-gray-400">
+                    Time Stamp
                   </th>
                 </tr>
               </thead>
@@ -91,16 +91,20 @@ const ReconHistoryTable: React.FC<ReconHistoryTableProps> = ({
                     onClick={() => handleRowClick(item.scan_id)}
                     className="cursor-pointer border-b border-gray-800 hover:bg-gray-900/50 transition-colors"
                   >
-                    <td className="p-4">{item.scan_name}</td>
-                    <td className="p-4">{item.ip}</td>
+                    <td className="p-4 text-sm  text-[#bbbbbb]">
+                      {item.scan_name}
+                    </td>
+                    <td className="p-4 text-sm text-[#bbbbbb]">{item.ip}</td>
                     <td className="p-4">
                       <span className={formatStatus(item.status)}>
                         {item.status.charAt(0).toUpperCase() +
                           item.status.slice(1) || "Unknown"}
                       </span>
                     </td>
-                    <td className="p-4">{item.exec_time || "-"}</td>
-                    <td className="p-4">{item.date}</td>
+                    <td className="p-4 text-[#bbbbbb]">
+                      {item.exec_time || "-"}
+                    </td>
+                    <td className="p-4 text-[#bbbbbb]">{item.date}</td>
                   </tr>
                 ))}
               </tbody>

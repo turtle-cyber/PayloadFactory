@@ -102,7 +102,7 @@ const ReconHistoryPage = () => {
 
   return (
     <div className="overflow-auto text-white">
-      <div className="px-24 mx-auto space-y-6">
+      <div className="px-48 mx-auto space-y-6">
         <div className="flex justify-end">
           <div className="relative">
             <div

@@ -173,13 +173,13 @@ const FindingPage = () => {
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case "Critical":
+      case "CRITICAL":
         return "text-red-500";
-      case "High":
+      case "HIGH":
         return "text-orange-500";
-      case "Medium":
+      case "MEDIUM":
         return "text-yellow-500";
-      case "Low":
+      case "LOW":
         return "text-cyan-500";
       default:
         return "text-gray-400";
@@ -363,14 +363,14 @@ const FindingPage = () => {
           <div className="rounded-lg px-4 py-2 bg-[#2f2f2f] mb-4">
             <div className="flex justify-between items-center">
               <h2 className="text-md font-mono text-[#969696]">Findings</h2>
-              <div className="flex gap-2">
+              {/* <div className="flex gap-2">
                 <button className="px-2 py-1 text-sm transition-colors flex items-center gap-2 font-thin tracking-wide border border-gray-600 hover:border-red-500 rounded-lg">
                   <span className="text-gray-500">
                     <Trash className="w-4" />
                   </span>
                   Clear Results
                 </button>
-              </div>
+              </div> */}
             </div>
           </div>
 
@@ -399,25 +399,25 @@ const FindingPage = () => {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-700">
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         Severity
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         CWE
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         CVE
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         File
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         Line
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         Confidence
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         Download Exploit
                       </th>
                       <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
@@ -433,7 +433,7 @@ const FindingPage = () => {
                           }`}
                         />
                       </th>
-                      <th className="text-left p-4 text-sm font-semibold text-gray-400">
+                      <th className="text-center p-4 text-sm font-semibold text-gray-400 align-middle">
                         Logs
                       </th>
                     </tr>
@@ -442,9 +442,9 @@ const FindingPage = () => {
                     {findings.map((finding, index) => (
                       <tr
                         key={index}
-                        className="border-gray-800 hover:bg-gray-900/50 transition-colors"
+                        className="border-gray-800 border-b hover:bg-gray-900/50 transition-colors"
                       >
-                        <td className="p-4">
+                        <td className="px-4 py-2 text-center align-middle">
                           <span
                             className={`text-sm font-semibold ${getSeverityColor(
                               finding.severity
@@ -453,38 +453,40 @@ const FindingPage = () => {
                             {finding.severity}
                           </span>
                         </td>
-                        <td className="p-4 text-sm text-gray-300">
+                        <td className="px-4 py-2 text-sm text-gray-300 text-center align-middle">
                           {finding.cwe}
                         </td>
-                        <td className="p-4 text-sm text-gray-300">
+                        <td className="px-4 py-2 text-sm text-gray-300 text-center align-middle">
                           {finding.cve === "Unknown"
                             ? "Unclassified"
                             : finding.cve}
                         </td>
-                        <td className="p-4 text-sm text-gray-300">
+                        <td className="px-4 py-2 text-sm text-gray-300 text-center align-middle">
                           {finding.file}
                         </td>
-                        <td className="p-4 text-sm text-gray-400">
+                        <td className="px-4 py-2 text-sm text-gray-400 text-center align-middle">
                           {finding.line}
                         </td>
-                        <td className="p-4 text-sm text-gray-400">
+                        <td className="px-4 py-2 text-sm text-gray-400 text-center align-middle">
                           {finding.confidence.toFixed(3)}
                         </td>
-                        <td className="p-4">
-                          {finding.exploit_path ? (
-                            <button
-                              onClick={() =>
-                                handleDownload(finding.exploit_path!)
-                              }
-                              className="bg-gray-800 hover:bg-gray-700 rounded-full p-2 transition-colors"
-                            >
-                              <Download size={16} className="text-gray-400" />
-                            </button>
-                          ) : (
-                            <span className="text-gray-600 text-xs">N/A</span>
-                          )}
+                        <td className="px-4 py-2 text-center align-middle">
+                          <div className="flex justify-center">
+                            {finding.exploit_path ? (
+                              <button
+                                onClick={() =>
+                                  handleDownload(finding.exploit_path!)
+                                }
+                                className="bg-gray-800 hover:bg-gray-700 rounded-full p-2 transition-colors"
+                              >
+                                <Download size={16} className="text-gray-400" />
+                              </button>
+                            ) : (
+                              <span className="text-gray-600 text-xs">N/A</span>
+                            )}
+                          </div>
                         </td>
-                        <td className="text-center p-4 align-middle">
+                        <td className="text-center align-middle">
                           <input
                             type="checkbox"
                             checked={selectedRows.has(index)}
@@ -497,45 +499,47 @@ const FindingPage = () => {
                             }`}
                           />
                         </td>
-                        <td>
-                          {/* Log icon - status-based coloring */}
-                          {finding.exploit_path ? (
-                            <button
-                              onClick={() =>
-                                handleViewLogs(finding.exploit_path!)
-                              }
-                              className={`p-2 rounded-full transition-colors ${
-                                getExploitStatus(finding.exploit_path) ===
-                                "completed"
-                                  ? "bg-green-900/30 hover:bg-green-800/50 text-green-400"
-                                  : getExploitStatus(finding.exploit_path) ===
-                                    "in_progress"
-                                  ? "bg-yellow-900/30 hover:bg-yellow-800/50 text-yellow-400 animate-pulse"
-                                  : getExploitStatus(finding.exploit_path) ===
-                                    "failed"
-                                  ? "bg-red-900/30 hover:bg-red-800/50 text-red-400"
-                                  : "bg-gray-800 hover:bg-gray-700 text-gray-500"
-                              }`}
-                              title={
-                                getExploitStatus(finding.exploit_path) ===
-                                "completed"
-                                  ? "Attack completed - View logs"
-                                  : getExploitStatus(finding.exploit_path) ===
-                                    "in_progress"
-                                  ? "Attack in progress"
-                                  : getExploitStatus(finding.exploit_path) ===
-                                    "failed"
-                                  ? "Attack failed - View logs"
-                                  : "Not executed yet"
-                              }
-                            >
-                              <MessageSquareCode size={16} />
-                            </button>
-                          ) : (
-                            <div className="p-2 rounded-full bg-gray-800 text-gray-600 cursor-not-allowed">
-                              <MessageSquareCode size={16} />
-                            </div>
-                          )}
+                        <td className="px-4 py-2 text-center align-middle">
+                          <div className="flex justify-center">
+                            {/* Log icon - status-based coloring */}
+                            {finding.exploit_path ? (
+                              <button
+                                onClick={() =>
+                                  handleViewLogs(finding.exploit_path!)
+                                }
+                                className={`p-2 rounded-full transition-colors ${
+                                  getExploitStatus(finding.exploit_path) ===
+                                  "completed"
+                                    ? "bg-green-900/30 hover:bg-green-800/50 text-green-400"
+                                    : getExploitStatus(finding.exploit_path) ===
+                                      "in_progress"
+                                    ? "bg-yellow-900/30 hover:bg-yellow-800/50 text-yellow-400 animate-pulse"
+                                    : getExploitStatus(finding.exploit_path) ===
+                                      "failed"
+                                    ? "bg-red-900/30 hover:bg-red-800/50 text-red-400"
+                                    : "bg-gray-800 hover:bg-gray-700 text-gray-500"
+                                }`}
+                                title={
+                                  getExploitStatus(finding.exploit_path) ===
+                                  "completed"
+                                    ? "Attack completed - View logs"
+                                    : getExploitStatus(finding.exploit_path) ===
+                                      "in_progress"
+                                    ? "Attack in progress"
+                                    : getExploitStatus(finding.exploit_path) ===
+                                      "failed"
+                                    ? "Attack failed - View logs"
+                                    : "Not executed yet"
+                                }
+                              >
+                                <MessageSquareCode size={16} />
+                              </button>
+                            ) : (
+                              <div className="p-2 rounded-full bg-gray-800 text-gray-600 cursor-not-allowed">
+                                <MessageSquareCode size={16} />
+                              </div>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -563,8 +567,7 @@ const FindingPage = () => {
                 </>
               ) : (
                 <>
-                  <span>Launch Attack</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>Weaponize</span>
                 </>
               )}
             </button>

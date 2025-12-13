@@ -29,9 +29,9 @@ const ReconPopup: React.FC<ReconPopupProps> = ({
 
   // Get title based on state
   const getTitle = () => {
-    if (isScanning) return "Reconnaissance In Progress....";
-    if (isFailed) return "Reconnaissance Failed";
-    return "Reconnaissance Complete";
+    if (isScanning) return "Recon Underway....";
+    if (isFailed) return "Recon Failed";
+    return "Recon Completed";
   };
 
   // Get header background color based on state
@@ -49,19 +49,20 @@ const ReconPopup: React.FC<ReconPopupProps> = ({
       >
         {/* Header with title and spinner/icon */}
         <div>
-          <div className={`${getHeaderBg()} text-[#949494] px-4 py-1 rounded-t-2xl flex align-center justify-between`}>
+          <div
+            className={`${getHeaderBg()} text-[#949494] px-4 py-1 rounded-t-2xl flex align-center justify-between`}
+          >
             <span>{getTitle()}</span>
             <div>
               {isScanning ? (
-                <CircularProgress
-                  size="20px"
-                  thickness={6}
-                  color={"inherit"}
-                />
+                <CircularProgress size="20px" thickness={6} color={"inherit"} />
               ) : isFailed ? (
                 <AlertTriangle className="text-red-500 w-5 h-5" />
               ) : (
-                <X className="cursor-pointer hover:text-white transition-colors" onClick={onClose} />
+                <X
+                  className="cursor-pointer hover:text-white transition-colors"
+                  onClick={onClose}
+                />
               )}
             </div>
           </div>
@@ -74,10 +75,14 @@ const ReconPopup: React.FC<ReconPopupProps> = ({
                 </span>
               ) : isFailed ? (
                 <span className="text-red-400">
-                  {errorMessage || "Scan failed. Please check the target and try again."}
+                  {errorMessage ||
+                    "Scan failed. Please check the target and try again."}
                 </span>
               ) : (
-                <span>Target Analysis is done. The fingerprint table is now populated.</span>
+                <span>
+                  Target Analysis is done. The fingerprint table is now
+                  populated.
+                </span>
               )}
             </div>
 

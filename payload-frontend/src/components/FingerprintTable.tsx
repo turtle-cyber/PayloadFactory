@@ -59,7 +59,7 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({
   return (
     <>
       <div className="py-2 px-4 rounded-lg bg-[#2f2f2f] flex items-center justify-between">
-        <span className="font-mono">Target Fingerprints</span>
+        <span className="font-mono">Target Fingerprints Summary</span>
         {selectedIndex !== null && selectedIndex !== undefined && (
           <span className="text-sm text-blue-400">1 port selected</span>
         )}
@@ -94,8 +94,7 @@ const FingerprintTable: React.FC<FingerprintTableProps> = ({
                       <Info className="w-4 h-4 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                      Select one port at a time for Help Guide & Exploit
-                      Generation
+                      Select port for help guide & exploit generation
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
