@@ -56,6 +56,7 @@ class ReconController {
         success: true,
         message: "Network scan completed successfully",
         data: {
+          scan_id: scanResult.data.scan_id,
           target_ip,
           services: scanResult.data.services,
           os_info: scanResult.data.os_info,

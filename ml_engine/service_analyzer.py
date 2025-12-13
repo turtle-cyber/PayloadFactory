@@ -214,6 +214,59 @@ Output ONLY the JSON object, no explanations."""
                 {"id": "CVE-2017-0144", "description": "EternalBlue - Remote code execution", "severity": "Critical"},
                 {"id": "CVE-2020-0796", "description": "SMBGhost - Remote code execution", "severity": "Critical"},
             ],
+            # NEW SERVICES ADDED
+            "postgresql": [
+                {"id": "CVE-2019-9193", "description": "Authenticated RCE via COPY TO/FROM PROGRAM", "severity": "Critical"},
+                {"id": "CVE-2018-1058", "description": "Privilege escalation via search path", "severity": "High"},
+                {"id": "CVE-2013-1899", "description": "Denial of service via malformed connection request", "severity": "Medium"},
+            ],
+            "elasticsearch": [
+                {"id": "CVE-2015-5531", "description": "Directory traversal via snapshot API", "severity": "High"},
+                {"id": "CVE-2014-3120", "description": "Remote code execution via dynamic scripting", "severity": "Critical"},
+                {"id": "CVE-2015-1427", "description": "Groovy sandbox bypass RCE", "severity": "Critical"},
+            ],
+            "iis": [
+                {"id": "CVE-2017-7269", "description": "WebDAV Buffer Overflow RCE", "severity": "Critical"},
+                {"id": "CVE-2015-1635", "description": "HTTP.sys Remote Code Execution", "severity": "Critical"},
+                {"id": "CVE-2021-31166", "description": "HTTP Protocol Stack RCE", "severity": "Critical"},
+            ],
+            "rdp": [
+                {"id": "CVE-2019-0708", "description": "BlueKeep - Remote code execution", "severity": "Critical"},
+                {"id": "CVE-2019-1181", "description": "RDP RCE vulnerability", "severity": "Critical"},
+                {"id": "CVE-2019-1182", "description": "RDP RCE vulnerability", "severity": "Critical"},
+            ],
+            "docker": [
+                {"id": "CVE-2019-5736", "description": "Container escape via runc", "severity": "Critical"},
+                {"id": "CVE-2020-15257", "description": "Containerd privilege escalation", "severity": "Critical"},
+            ],
+            "jenkins": [
+                {"id": "CVE-2019-1003000", "description": "Sandbox bypass via Pipeline scripts", "severity": "Critical"},
+                {"id": "CVE-2018-1000861", "description": "Unauthenticated RCE via Stapler", "severity": "Critical"},
+                {"id": "CVE-2024-23897", "description": "Arbitrary file read via CLI", "severity": "Critical"},
+            ],
+            "jira": [
+                {"id": "CVE-2019-11581", "description": "Server-Side Template Injection RCE", "severity": "Critical"},
+                {"id": "CVE-2020-36239", "description": "Unauthenticated Ehcache RCE", "severity": "Critical"},
+            ],
+            "php": [
+                {"id": "CVE-2024-4577", "description": "CGI Argument Injection RCE", "severity": "Critical"},
+                {"id": "CVE-2019-11043", "description": "PHP-FPM Buffer Overflow RCE", "severity": "Critical"},
+            ],
+            "ftp": [
+                {"id": "CVE-2015-3306", "description": "ProFTPD mod_copy arbitrary file copy", "severity": "Critical"},
+                {"id": "CVE-2010-4221", "description": "vsftpd backdoor", "severity": "Critical"},
+            ],
+            "telnet": [
+                {"id": "CVE-2011-4862", "description": "FreeBSD telnetd encryption key buffer overflow", "severity": "Critical"},
+            ],
+            "vnc": [
+                {"id": "CVE-2006-2369", "description": "RealVNC Authentication Bypass", "severity": "Critical"},
+                {"id": "CVE-2019-15678", "description": "TightVNC Heap Buffer Overflow", "severity": "Critical"},
+            ],
+            "kubernetes": [
+                {"id": "CVE-2018-1002105", "description": "API Server privilege escalation", "severity": "Critical"},
+                {"id": "CVE-2020-8558", "description": "Kube-proxy bypass to localhost", "severity": "High"},
+            ],
         }
         
         # Find matching service
@@ -223,9 +276,28 @@ Output ONLY the JSON object, no explanations."""
                 return cves
         
         # Check for port-based fallback (e.g., "Service on port 8080" -> likely Tomcat)
-        if "8080" in service_name or "tomcat" in service_lower:
-            logger.info("Port 8080 detected - returning Tomcat CVEs")
-            return KNOWN_CVES.get("apache tomcat", [])
+        PORT_TO_SERVICE = {
+            "8080": "apache tomcat",
+            "8443": "apache tomcat",
+            "9200": "elasticsearch",
+            "9300": "elasticsearch",
+            "5432": "postgresql",
+            "5433": "postgresql",
+            "3389": "rdp",
+            "5900": "vnc",
+            "5901": "vnc",
+            "2375": "docker",
+            "2376": "docker",
+            "8500": "jenkins",
+            "50000": "jenkins",
+            "6443": "kubernetes",
+            "10250": "kubernetes",
+        }
+        
+        for port_str, service_key in PORT_TO_SERVICE.items():
+            if port_str in service_name.lower():
+                logger.info(f"Port {port_str} detected - returning {service_key} CVEs")
+                return KNOWN_CVES.get(service_key, [])
         
         return []
 
@@ -421,7 +493,7 @@ Output ONLY the JSON object, no explanations."""
         }
         return port_map.get(port, f"Service on port {port}")
     
-    def _generate(self, prompt: str, max_new_tokens: int = 2500) -> str:
+    def _generate(self, prompt: str, max_new_tokens: int = 3500) -> str:
         """Generate LLM response."""
         import torch
         
@@ -739,6 +811,49 @@ Output ONLY the JSON object, no explanations."""
                 ],
                 "config_files": ["/etc/redis/redis.conf"],
                 "notes": "Default Redis has no auth. Enable Lua for CVE-2022-0543 testing."
+            },
+            # NEW LAB SETUPS
+            "postgresql": {
+                "docker_image": f"postgres:{version if version != 'unknown' else 'latest'}",
+                "docker_run": f"docker run -d -p {port}:5432 -e POSTGRES_PASSWORD=postgres --name postgres-lab postgres:{version if version != 'unknown' else 'latest'}",
+                "install_commands": [
+                    "apt-get update && apt-get install -y postgresql",
+                    "systemctl start postgresql"
+                ],
+                "config_files": ["/etc/postgresql/*/main/pg_hba.conf", "/etc/postgresql/*/main/postgresql.conf"],
+                "default_creds": ["postgres:postgres", "admin:admin"],
+                "notes": "For CVE-2019-9193 testing, use versions 9.3+ with COPY TO/FROM PROGRAM feature."
+            },
+            "elasticsearch": {
+                "docker_image": f"elasticsearch:{version if version != 'unknown' else '7.17.0'}",
+                "docker_run": f"docker run -d -p {port}:9200 -e discovery.type=single-node --name elastic-lab elasticsearch:{version if version != 'unknown' else '7.17.0'}",
+                "install_commands": [
+                    "# Pull vulnerable version for CVE testing:",
+                    "docker pull elasticsearch:1.4.2  # For CVE-2014-3120"
+                ],
+                "config_files": ["/usr/share/elasticsearch/config/elasticsearch.yml"],
+                "notes": "For RCE testing, use versions < 1.5.0 with dynamic scripting enabled."
+            },
+            "jenkins": {
+                "docker_image": "jenkins/jenkins:lts",
+                "docker_run": f"docker run -d -p {port}:8080 -p 50000:50000 --name jenkins-lab jenkins/jenkins:lts",
+                "install_commands": [
+                    "# For vulnerable version testing:",
+                    "docker pull jenkins/jenkins:2.150.1  # For CVE-2018-1000861"
+                ],
+                "config_files": ["/var/jenkins_home/config.xml"],
+                "default_creds": ["admin:<initial_password_from_logs>"],
+                "test_paths": ["/script", "/computer/", "/asynchPeople/", "/api/"],
+                "notes": "Check initial password in container logs. For CVE-2024-23897, test CLI access."
+            },
+            "docker": {
+                "docker_image": "N/A - Docker API testing",
+                "docker_run": "# Expose Docker API: dockerd -H tcp://0.0.0.0:2375",
+                "install_commands": [
+                    "# WARNING: Exposing Docker API is dangerous!",
+                    "# Edit /etc/docker/daemon.json to expose API"
+                ],
+                "notes": "Never expose Docker API unauthenticated in production. For CVE-2019-5736, use old runc version."
             }
         }
         

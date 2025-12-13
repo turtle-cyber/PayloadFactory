@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  python-api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    gpus: all
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://admin:admin@mongo:27017/?authSource=admin
+      PYTHONUNBUFFERED: "1"
+      MODEL_BASE_DIR: /app/models
+      ADAPTER_BASE_DIR: /app/saved_model
+      MODEL_BASE_PATH_HERMES: hermes-3-llama-3.1-8b
+      MODEL_ADAPTER_PATH_HERMES: hermes_adapter
+      MODEL_BASE_PATH_QWEN: Qwen2.5-VL-7B-Instruct-abliterated
+      MODEL_ADAPTER_PATH_QWEN: qwen2.5_vl_adapter
+    depends_on:
+      - mongo
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./exploits:/app/exploits
+      - ./saved_model:/app/saved_model
+      - ./models:/app/models
+
+  backend:
+    build:
+      context: ./payload-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5000
+      PYTHON_API_URL: http://python-api:8000
+      MONGO_URI: mongodb://admin:admin@mongo:27017/?authSource=admin
+      MONGO_DB: payloadfactoryDB
+    depends_on:
+      - mongo
+      - python-api
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ./payload-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  mongo_data:
