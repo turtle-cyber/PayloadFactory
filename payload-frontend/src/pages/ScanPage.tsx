@@ -398,8 +398,8 @@ const ScanPage: React.FC = () => {
   };
 
   return (
-    <div className="overflow-auto text-white">
-      <div className="max-w-6xl mx-auto space-y-6 px-6">
+    <div className="overflow-auto text-white pb-6">
+      <div className="px-24 mx-auto space-y-6">
         {/* Scan Progress Section */}
         {scanProgress && (
           <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
@@ -552,10 +552,7 @@ const ScanPage: React.FC = () => {
         </div>
 
         <div className="glassmorphism-card rounded-xl p-8 border border-red-500/20">
-          <ScanLogCard
-            scanId={scanProgress?.scan_id}
-            isScanning={isScanning}
-          />
+          <ScanLogCard scanId={scanProgress?.scan_id} isScanning={isScanning} />
         </div>
 
         {/* Action Buttons */}

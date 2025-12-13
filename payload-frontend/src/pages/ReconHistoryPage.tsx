@@ -64,7 +64,10 @@ function useGetReconHistory() {
   return { historyData, historyLoading, fetchHistory };
 }
 
-function filterByDate(data: ApiHistoryData[], filter: DateFilter): ApiHistoryData[] {
+function filterByDate(
+  data: ApiHistoryData[],
+  filter: DateFilter
+): ApiHistoryData[] {
   if (filter === "all") return data;
 
   const now = new Date();
@@ -94,11 +97,12 @@ const ReconHistoryPage = () => {
     [historyData, dateFilter]
   );
 
-  const currentFilterLabel = filterOptions.find((opt) => opt.value === dateFilter)?.label || "All Time";
+  const currentFilterLabel =
+    filterOptions.find((opt) => opt.value === dateFilter)?.label || "All Time";
 
   return (
     <div className="overflow-auto text-white">
-      <div className="max-w-6xl mx-auto space-y-6 px-6">
+      <div className="px-24 mx-auto space-y-6">
         <div className="flex justify-end">
           <div className="relative">
             <div
@@ -107,7 +111,11 @@ const ReconHistoryPage = () => {
             >
               <ListFilter className="w-4 h-4" />
               <span>{currentFilterLabel}</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${isFilterOpen ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${
+                  isFilterOpen ? "rotate-180" : ""
+                }`}
+              />
             </div>
 
             {isFilterOpen && (

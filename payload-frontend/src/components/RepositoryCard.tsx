@@ -135,9 +135,9 @@ const RepositoryCard: React.FC<RepositoryCardProps> = ({
             />
           </div>
 
-          <div className="gap-x-4 flex items-center">
-            <span className="text-blue-300">Demo Mode</span>
-
+          {/* <div className="gap-x-4 flex items-center">
+            <span className="text-blue-300"> Mode</span>
+Demo
             <input
               type="checkbox"
               name="demoMode"
@@ -146,7 +146,7 @@ const RepositoryCard: React.FC<RepositoryCardProps> = ({
               disabled={isScanning || isUploading}
               className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
             />
-          </div>
+          </div> */}
         </div>
 
         <div className="flex items-center ml-24 gap-x-4 mt-4">

@@ -3,6 +3,7 @@ import { http } from "../utils/http";
 import { GET_SCANS } from "../endpoints/resultspage.endpoints";
 import { toast } from "../utils/toast";
 import { useNavigate } from "react-router-dom";
+import { ChevronDown, ListFilter } from "lucide-react";
 
 interface ApiScanData {
   id: string;
@@ -25,6 +26,15 @@ interface ScanFinding {
   date: string;
   runTime: string;
 }
+
+type DateFilter = "all" | "1day" | "2days" | "7days";
+
+const filterOptions: { value: DateFilter; label: string }[] = [
+  { value: "all", label: "All Time" },
+  { value: "1day", label: "Last 1 Day" },
+  { value: "2days", label: "Last 2 Days" },
+  { value: "7days", label: "Last 7 Days" },
+];
 
 function useGetScans() {
   const [scanData, setScanData] = useState<ApiScanData[]>([]);
@@ -120,9 +130,34 @@ const formatStatus = (status: string) => {
 const ResultsPage: React.FC = () => {
   const { scanData, scanLoading, fetchScans } = useGetScans();
   const navigate = useNavigate();
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+
+  // Filter by date
+  const filterByDate = (scans: ApiScanData[]): ApiScanData[] => {
+    if (dateFilter === "all") return scans;
+
+    const now = new Date();
+    const filterDays: Record<DateFilter, number> = {
+      all: 0,
+      "1day": 1,
+      "2days": 2,
+      "7days": 7,
+    };
+
+    const daysAgo = filterDays[dateFilter];
+    const cutoffDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+
+    return scans.filter((scan) => {
+      const scanDate = new Date(scan.submitted_at || scan.date);
+      return scanDate >= cutoffDate;
+    });
+  };
+
+  const filteredScanData = filterByDate(scanData);
 
   // Map API response to table format
-  const findings: ScanFinding[] = scanData.map((scan) => ({
+  const findings: ScanFinding[] = filteredScanData.map((scan) => ({
     id: scan.id,
     name: scan.project_name || "Unknown",
     size: formatFileSize(scan.file_size),
@@ -139,177 +174,215 @@ const ResultsPage: React.FC = () => {
 
   return (
     <div className="overflow-auto text-white">
-      <div className="max-w-6xl mx-auto px-6">
-        {/* Findings Section */}
-        <div className="glassmorphism-card p-8 rounded-lg border border-red-500/20">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-400">
-              Findings
-              {!scanLoading && findings.length > 0 && (
-                <span className="text-xl text-gray-500 ml-2">
-                  ({findings.length})
-                </span>
-              )}
-            </h2>
-            <div className="flex gap-2">
-              {!scanLoading && (
-                <>
-                  <button
-                    onClick={async () => {
-                      if (window.confirm("Are you sure you want to delete ALL scan data? This action cannot be undone.")) {
-                        try {
-                          await http.delete("/scans/all");
-                          toast.success("Database cleared", "All scans and findings have been deleted");
-                          fetchScans();
-                        } catch (error) {
-                          toast.error("Error", "Failed to clear database");
-                          console.error("Error clearing database:", error);
-                        }
-                      }
-                    }}
-                    className="px-4 py-2 text-sm bg-red-500/10 border border-red-500/30 rounded-lg hover:bg-red-500/20 hover:border-red-500/50 transition-colors flex items-center gap-2 text-red-400"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                    Clear Database
-                  </button>
-                  <button
-                    onClick={fetchScans}
-                    className="px-4 py-2 text-sm bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-2"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-                    Refresh
-                  </button>
-                </>
-              )}
+      <div className="px-24 mx-auto">
+        <div className="flex justify-end mb-4">
+          <div className="relative">
+            <div
+              className="p-2 flex items-center justify-center gap-2 rounded-lg text-gray-300 hover:text-gray-100 bg-[#f378781f] border border-[#462222] cursor-pointer hover:bg-[#f3787833] transition-all"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+            >
+              <ListFilter className="w-4 h-4" />
+              <span>
+                {filterOptions.find((o) => o.value === dateFilter)?.label}
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${
+                  isFilterOpen ? "rotate-180" : ""
+                }`}
+              />
             </div>
+            {isFilterOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-[#1a1714] border border-[#462222] rounded-lg shadow-lg z-10 overflow-hidden">
+                {filterOptions.map((option) => (
+                  <div
+                    key={option.value}
+                    className={`px-4 py-2 cursor-pointer transition-all ${
+                      dateFilter === option.value
+                        ? "bg-[#f3787833] text-red-400"
+                        : "text-gray-300 hover:bg-[#f378781f] hover:text-gray-100"
+                    }`}
+                    onClick={() => {
+                      setDateFilter(option.value);
+                      setIsFilterOpen(false);
+                    }}
+                  >
+                    {option.label}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto max-h-[70vh] overflow-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
-                    Name
-                  </th>
-                  <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
-                    Size
-                  </th>
-                  <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
-                    File Location
-                  </th>
-                  <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
-                    Status
-                  </th>
-                  <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
-                    Date
-                  </th>
-                  <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
-                    Execution Time
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {scanLoading ? (
-                  // Show skeleton rows while loading
-                  <>
-                    <SkeletonRow />
-                    <SkeletonRow />
-                    <SkeletonRow />
-                    <SkeletonRow />
-                    <SkeletonRow />
-                  </>
-                ) : findings.length > 0 ? (
-                  // Show actual data
-                  findings.map((finding) => (
-                    <tr
-                      key={finding.id}
-                      className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
-                      onClick={() => {
-                        handleRowClick(finding.id);
-                      }}
+        {/* Heading */}
+        <div className="flex justify-between items-center mb-4 rounded-lg px-4 py-2 bg-[#2f2f2f]">
+          <h2 className="text-md font-mono text-[#969696]">
+            Findings
+            {!scanLoading && findings.length > 0 && (
+              <span className="text-md text-gray-500 ml-2">
+                ({findings.length})
+              </span>
+            )}
+          </h2>
+          <div className="flex gap-2">
+            {!scanLoading && (
+              <>
+                <button
+                  onClick={async () => {
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete ALL scan data? This action cannot be undone."
+                      )
+                    ) {
+                      try {
+                        await http.delete("/scans/all");
+                        toast.success(
+                          "Database cleared",
+                          "All scans and findings have been deleted"
+                        );
+                        fetchScans();
+                      } catch (error) {
+                        toast.error("Error", "Failed to clear database");
+                        console.error("Error clearing database:", error);
+                      }
+                    }
+                  }}
+                  className="px-2 py-2 text-sm transition-colors flex items-center gap-2 font-thin tracking-wide border border-gray-600 hover:border-red-500 rounded-lg"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  Clear Database
+                </button>
+                <button
+                  onClick={fetchScans}
+                  className="px-2 py-2 text-sm transition-colors flex items-center gap-2 font-thin tracking-wide border border-gray-600 hover:border-red-500 rounded-lg"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  Refresh
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="max-h-[70vh] overflow-auto bg-[#201f1c] opacity-70 rounded-lg backdrop-blur-sm">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
+                  Name
+                </th>
+                <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
+                  Size
+                </th>
+                <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
+                  File Location
+                </th>
+                <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
+                  Status
+                </th>
+                <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
+                  Date
+                </th>
+                <th className="text-left py-4 px-4 text-gray-400 font-medium text-sm">
+                  Execution Time
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {scanLoading ? (
+                // Show skeleton rows while loading
+                <>
+                  <SkeletonRow />
+                  <SkeletonRow />
+                  <SkeletonRow />
+                  <SkeletonRow />
+                  <SkeletonRow />
+                </>
+              ) : findings.length > 0 ? (
+                // Show actual data
+                findings.map((finding) => (
+                  <tr
+                    key={finding.id}
+                    className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
+                    onClick={() => {
+                      handleRowClick(finding.id);
+                    }}
+                  >
+                    <td className="py-4 px-4 text-white">{finding.name}</td>
+                    <td className="py-4 px-4 text-gray-400">{finding.size}</td>
+                    <td
+                      className="py-4 px-4 text-gray-400 max-w-xs truncate"
+                      title={finding.fileLocation}
                     >
-                      <td className="py-4 px-4 text-white">{finding.name}</td>
-                      <td className="py-4 px-4 text-gray-400">
-                        {finding.size}
-                      </td>
-                      <td
-                        className="py-4 px-4 text-gray-400 max-w-xs truncate"
-                        title={finding.fileLocation}
+                      {finding.fileLocation}
+                    </td>
+                    <td className="py-4 px-4">
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${formatStatus(
+                          finding.status
+                        )}`}
                       >
-                        {finding.fileLocation}
-                      </td>
-                      <td className="py-4 px-4">
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${formatStatus(
-                            finding.status
-                          )}`}
-                        >
-                          {finding.status.charAt(0).toUpperCase() +
-                            finding.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-gray-400">
-                        {finding.date}
-                      </td>
-                      <td className="py-4 px-4 text-gray-400">
-                        {finding.runTime}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  // Show empty state
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center">
-                      <div className="flex flex-col items-center justify-center text-gray-500">
-                        <svg
-                          className="w-16 h-16 mb-4 opacity-50"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                        <p className="text-lg mb-2">No scans found</p>
-                        <p className="text-sm">
-                          Run a scan to see results here
-                        </p>
-                      </div>
+                        {finding.status.charAt(0).toUpperCase() +
+                          finding.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-gray-400">{finding.date}</td>
+                    <td className="py-4 px-4 text-gray-400">
+                      {finding.runTime}
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              ) : (
+                // Show empty state
+                <tr>
+                  <td colSpan={6} className="py-12 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <svg
+                        className="w-16 h-16 mb-4 opacity-50"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                      <p className="text-lg mb-2">No scans found</p>
+                      <p className="text-sm">Run a scan to see results here</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

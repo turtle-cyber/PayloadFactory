@@ -1,13 +1,23 @@
+import { useState } from "react";
 import { ArrowRight, Crosshair, History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import ReconPopup from "./ReconPopup";
+import { toast } from "@/utils/toast";
 
 interface ReconTargetCardProps {
   targetIp: string;
   setTargetIp: (value: string) => void;
   appName: string;
   setAppName: (value: string) => void;
-  onScan: () => void;
+  onScan: () => Promise<void>;
   isScanning: boolean;
+  onScanComplete?: () => void;
 }
 
 const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
@@ -17,39 +27,127 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
   setAppName,
   onScan,
   isScanning,
+  onScanComplete,
 }) => {
   const navigate = useNavigate();
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [isScanComplete, setIsScanComplete] = useState(false);
+  const [scanFailed, setScanFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   const handleNavigateHistory = () => {
     navigate("/recon/history");
   };
 
+  const handleScan = async () => {
+    // Validate inputs and show info toast if missing
+    if (!appName.trim()) {
+      toast.info(
+        "Reconnaissance Name Required",
+        "Please enter a reconnaissance name before scanning"
+      );
+      return;
+    }
+    if (!targetIp.trim()) {
+      toast.info(
+        "Target Required",
+        "Please enter a target IP/URL/Domain before scanning"
+      );
+      return;
+    }
+
+    setIsPopupOpen(true);
+    setIsScanComplete(false);
+    setScanFailed(false);
+    setErrorMessage(undefined);
+    try {
+      await onScan();
+      setIsScanComplete(true);
+    } catch (error: any) {
+      setScanFailed(true);
+      setErrorMessage(
+        error?.response?.data?.message || error?.message || "Scan failed"
+      );
+      setIsScanComplete(true); // Mark as complete so popup shows result
+    }
+  };
+
+  const handleClosePopup = () => {
+    setIsPopupOpen(false);
+    setIsScanComplete(false);
+    setScanFailed(false);
+    setErrorMessage(undefined);
+  };
+
+  const handleOkClick = () => {
+    handleClosePopup();
+    // Only call onScanComplete for successful scans
+    if (!scanFailed) {
+      onScanComplete?.();
+    }
+  };
+
   return (
     <div>
+      <ReconPopup
+        isOpen={isPopupOpen}
+        onClose={handleClosePopup}
+        isScanning={!isScanComplete}
+        scanFailed={scanFailed}
+        errorMessage={errorMessage}
+        onOk={handleOkClick}
+      />
       {/*Heading*/}
       <div className="items-center justify-between flex gap-2">
         <div className="text-gray-400 flex items-center gap-2">
           <Crosshair className="w-5" />
-          <h2 className="text-blue-500 text-lg">Recon Target</h2>
+          <h2 className="text-[#58A6FF] text-lg">Recon Target</h2>
         </div>
 
-        <div
-          className="p-2.5 h-11 w-11 justify-center items-center flex rounded-xl border border-gray-700/50 bg-transparent hover:border-gray-600 hover:bg-gray-800/80 transition-all shadow-lg cursor-pointer"
-          onClick={handleNavigateHistory}
-        >
-          <History className="w-5 h-5 text-gray-400" />
-        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className="p-2.5 h-11 w-11 justify-center items-center flex rounded-xl border border-gray-700/50 bg-transparent hover:border-gray-600 hover:bg-gray-800/80 transition-all shadow-lg cursor-pointer"
+                onClick={handleNavigateHistory}
+              >
+                <History className="w-5 h-5 text-gray-400" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Click Here To View Recon History</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      {/*Inputs And Options*/}
+      <div className="flex items-center mx-10 px-4 gap-x-4 mt-4 mb-4">
+        <span className="text-blue-300 font-mono text-sm">
+          Enter Reconnaissance Name:
+        </span>
+
+        <input
+          type="text"
+          name="reconName"
+          autoComplete="off"
+          value={appName}
+          onChange={(e) => setAppName(e.target.value)}
+          disabled={isScanning}
+          className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm text-white disabled:opacity-30 disabled:cursor-not-allowed [&:-webkit-autofill]:[-webkit-box-shadow:0_0_0_1000px_#1f2937_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:#fff]"
+          placeholder="My App"
+        />
       </div>
 
       {/*Terminal Window */}
-      <div className="p-4 ml-10">
-        <div className="items-center justify-between flex rounded-t-lg bg-[#2f2f2f] py-3 px-4">
-          <span className="font-md text-gray-500">Enter the Target's IP</span>
+      <div className="p-4 ml-10 w-[60%]">
+        <div className="items-center justify-between flex rounded-t-lg bg-[#2f2f2f] py-1 px-4">
+          <span className="font-md text-gray-500 font-mono">
+            Enter the Target's
+          </span>
         </div>
 
         <div className="border-[#2f2f2f] border items-center bg-[#0d0d0d] p-4 rounded-b-lg">
           <div className="border border-[#2f2f2f] rounded-lg p-3">
-            <div className="w-full focus:outline-none flex">
+            <div className="focus:outline-none flex">
               <input
                 type="text"
                 name="targetIp"
@@ -57,49 +155,45 @@ const ReconTargetCard: React.FC<ReconTargetCardProps> = ({
                 onChange={(e) => setTargetIp(e.target.value)}
                 placeholder="IP / URL / DOMAIN"
                 disabled={isScanning}
-                className="w-full bg-transparent text-md text-blue-300 placeholder-blue-300/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-transparent text-md text-blue-300 placeholder-blue-300/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ["
               />
-              <button
-                onClick={onScan}
-                disabled={isScanning}
-                className="rounded-md border border-[#4b4b4b] text-[#4b4b4b] hover:border-red-500 hover:text-red-500 px-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isScanning ? (
-                  <svg
-                    className="w-5 h-5 animate-spin"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                ) : (
-                  <ArrowRight className="w-5" />
-                )}
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleScan}
+                      disabled={isScanning}
+                      className="rounded-md border border-[#4b4b4b] text-[#4b4b4b] hover:border-red-500 hover:text-red-500 px-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isScanning ? (
+                        <svg
+                          className="w-5 h-5 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      ) : (
+                        <ArrowRight className="w-5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isScanning
+                      ? "Capturing..."
+                      : "Click To Capture The Target's Fingerprints"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>
-      </div>
-
-      {/*Inputs And Options*/}
-      <div className="flex items-center ml-24 gap-x-4 mt-4">
-        <span className="text-blue-300">Enter Name:</span>
-
-        <input
-          type="text"
-          name="applicationName"
-          value={appName}
-          onChange={(e) => setAppName(e.target.value)}
-          disabled={isScanning}
-          className="bg-gray-800 opacity-50 rounded-lg p-2 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-          placeholder="My App"
-        />
       </div>
     </div>
   );

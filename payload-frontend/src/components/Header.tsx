@@ -11,7 +11,7 @@ const Header: React.FC = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 pt-2 backdrop-blur-md">
-      <nav className="max-w-7xl mx-auto">
+      <nav className="px-48 mx-auto">
         <div className="flex items-center justify-between border-[#C93D3D] border rounded-xl p-3">
           {/* Logo */}
           <Link to="/" className="text-2xl font-bold tracking-wider">

@@ -107,7 +107,7 @@ const App: React.FC = () => {
         theme="dark"
         toastOptions={{
           style: {
-            background: "rgba(17, 17, 17, 0.95)",
+            background: "rgba(17, 17, 17, 0.05)",
             border: "1px solid rgba(255, 255, 255, 0.1)",
             backdropFilter: "blur(10px)",
           },

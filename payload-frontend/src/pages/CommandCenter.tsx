@@ -298,11 +298,13 @@ const CommandCenter: React.FC = () => {
 
   return (
     <div className="min-h-screen text-white px-8 py-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="px-24 mx-auto">
         {/* Platform Metrics */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Platform Metrics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <h2 className="text-xl font-semibold mb-4 font-mono">
+            Platform Metrics
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-32">
             {platformMetricsLoading ? (
               // Skeleton Loader
               <>
@@ -333,7 +335,9 @@ const CommandCenter: React.FC = () => {
 
         {/* Recon Analytics */}
         <div>
-          <h2 className="text-xl font-semibold mb-4">Recon Analytics</h2>
+          <h2 className="text-xl font-semibold font-mono mb-4">
+            Recon Analytics
+          </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Top Repos By Severity - Donut Chart */}
             <div className="glassmorphism-card rounded-lg p-6 border border-red-500/20">
