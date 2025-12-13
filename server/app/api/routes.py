@@ -313,6 +313,38 @@ async def stop_scan(scan_id: str):
         logger.error(f"Failed to stop scan: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class StartAttackRequest(BaseModel):
+    selected_exploits: List[str] = []  # List of exploit filenames
+    run_all: bool = False  # If True, run all exploits
+
+
+@router.post("/scan/{scan_id}/start-attack")
+async def start_attack(scan_id: str, request: StartAttackRequest):
+    """
+    Resume Stage 3 with selected exploits.
+    
+    Call this after Stage 2 completes (status='awaiting-selection') 
+    to start the attack phase with only the exploits the user selected.
+    """
+    try:
+        orchestrator = get_orchestrator()
+        result = orchestrator.resume_stage_3(
+            scan_id=scan_id,
+            selected_exploits=request.selected_exploits,
+            run_all=request.run_all
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start attack: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/scan-logs/{scan_id}")
 async def get_scan_logs(scan_id: str, offset: int = 0, limit: int = 100):
     """Get logs for a specific scan with pagination."""

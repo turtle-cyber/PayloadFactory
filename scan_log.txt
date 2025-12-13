@@ -1,12 +1,11 @@
-2025-12-12 11:25:11,318 - INFO - Connected to MongoDB: payloadfactoryDB
-2025-12-12 11:25:11,319 - INFO - Created new scan: 693bae3f99527842daa97230
-2025-12-12 11:25:11,319 - INFO - Running FULL SCAN (all files)
-2025-12-12 11:25:11,319 - INFO - Using LLM Model: hermes
-2025-12-12 11:25:11,319 - INFO - Launching scan_stage_1.py...
-2025-12-12 11:25:22,992 - INFO - scan_stage_1.py completed successfully.
-2025-12-12 11:25:22,992 - INFO - Launching scan_stage_2.py...
-2025-12-12 11:28:09,213 - INFO - scan_stage_2.py completed successfully.
-2025-12-12 11:28:09,213 - INFO - Launching scan_stage_3.py...
-2025-12-12 11:28:12,076 - INFO - scan_stage_3.py completed successfully.
-2025-12-12 11:28:12,076 - INFO - ALL STAGES COMPLETED SUCCESSFULLY.
-2025-12-12 11:28:12,077 - INFO - MongoDB connection closed.
+2025-12-12 18:45:40,378 - INFO - Connected to MongoDB: payloadfactoryDB
+2025-12-12 18:45:40,389 - INFO - Created new scan: 693c157c44a07f1b15055d84
+2025-12-12 18:45:40,389 - INFO - ============================================================
+2025-12-12 18:45:40,389 - INFO - QUICK SCAN MODE ENABLED
+2025-12-12 18:45:40,389 - INFO - Will prioritize top 300 security-critical files
+2025-12-12 18:45:40,389 - INFO - Estimated completion time: 1.5-2.5 hours
+2025-12-12 18:45:40,389 - INFO - ============================================================
+2025-12-12 18:45:40,389 - INFO - Using LLM Model: hermes
+2025-12-12 18:45:40,389 - INFO - Launching scan_stage_1.py...
+2025-12-12 18:46:08,165 - INFO - scan_stage_1.py completed successfully.
+2025-12-12 18:46:08,165 - INFO - Launching scan_stage_2.py...

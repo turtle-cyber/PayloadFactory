@@ -24,6 +24,7 @@ class ScanStatus(str, Enum):
     PENDING = "pending"
     STAGE_1 = "stage-1"
     STAGE_2 = "stage-2"
+    AWAITING_SELECTION = "awaiting-selection"  # NEW: Waiting for user to select exploits
     STAGE_3 = "stage-3"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -207,14 +208,17 @@ class ScanOrchestrator:
             if result.returncode != 0:
                 raise Exception(f"Stage 2 failed: {result.stderr}")
             
-            # Stage 3: Fuzzing and RL optimization
-            if config["cancelled"]:
-                return
-            
+            # STOP after Stage 2 - Wait for user to select exploits
             self.db.update_scan_progress(scan_id, {
-                "status": ScanStatus.STAGE_3,
-                "progress.current_stage": 3
+                "status": ScanStatus.AWAITING_SELECTION,
+                "progress.current_stage": 2,
+                "awaiting_selection": True
             })
+            
+            logger.info(f"Scan {scan_id} Stage 2 complete - awaiting exploit selection")
+            
+            # Pipeline stops here - Stage 3 will be triggered by resume_stage_3()
+            return
             
             stage3_cmd = [
                 sys.executable,
@@ -259,6 +263,110 @@ class ScanOrchestrator:
                     os.remove(intermediate_file)
                 except:
                     pass
+    
+    def resume_stage_3(
+        self,
+        scan_id: str,
+        selected_exploits: Optional[list] = None,
+        run_all: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Resume scan with Stage 3 after user selects exploits.
+        
+        Args:
+            scan_id: The scan ID to resume
+            selected_exploits: List of exploit filenames to run (if run_all is False)
+            run_all: If True, run all exploits (ignore selected_exploits)
+        
+        Returns:
+            Dict with status and message
+        """
+        # Get scan from database
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            return {"error": "Scan not found", "scan_id": scan_id}
+        
+        # Check if scan is in awaiting-selection status
+        if scan.get("status") != ScanStatus.AWAITING_SELECTION:
+            return {
+                "error": f"Scan is not awaiting selection. Current status: {scan.get('status')}",
+                "scan_id": scan_id
+            }
+        
+        # Store selected exploits in database
+        self.db.update_scan_progress(scan_id, {
+            "selected_exploits": selected_exploits if not run_all else [],
+            "run_all_exploits": run_all
+        })
+        
+        # Get scan config from database
+        output_dir = os.path.join(self.project_root, "exploits")
+        remote_host = scan.get("remote_host")
+        remote_port = scan.get("remote_port")
+        auto_execute = scan.get("auto_execute", True)
+        
+        # Build Stage 3 command
+        stage3_cmd = [
+            sys.executable,
+            os.path.join(self.project_root, "scan_stage_3.py"),
+            output_dir,
+            "--scan-id", scan_id,
+            "--smart-fuzz"
+        ]
+        
+        if remote_host:
+            stage3_cmd.extend(["--remote-host", remote_host])
+        if remote_port:
+            stage3_cmd.extend(["--remote-port", str(remote_port)])
+        if auto_execute:
+            stage3_cmd.append("--auto-execute")
+        
+        # Pass selected exploits if not running all
+        if not run_all and selected_exploits:
+            stage3_cmd.extend(["--selected-exploits", ",".join(selected_exploits)])
+        
+        # Update status to Stage 3
+        self.db.update_scan_progress(scan_id, {
+            "status": ScanStatus.STAGE_3,
+            "progress.current_stage": 3,
+            "awaiting_selection": False
+        })
+        
+        # Run Stage 3 in background thread
+        def run_stage_3():
+            try:
+                result = subprocess.run(stage3_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    logger.error(f"Stage 3 failed: {result.stderr}")
+                    self.db.update_scan_progress(scan_id, {
+                        "status": ScanStatus.FAILED,
+                        "error": f"Stage 3 failed: {result.stderr}"
+                    })
+                else:
+                    self.db.update_scan_progress(scan_id, {
+                        "status": ScanStatus.COMPLETED,
+                        "timestamps.completed_at": datetime.utcnow().isoformat()
+                    })
+                    logger.info(f"Scan {scan_id} completed successfully")
+            except Exception as e:
+                logger.error(f"Stage 3 error: {e}")
+                self.db.update_scan_progress(scan_id, {
+                    "status": ScanStatus.FAILED,
+                    "error": str(e)
+                })
+        
+        thread = threading.Thread(target=run_stage_3, daemon=True)
+        thread.start()
+        
+        logger.info(f"Scan {scan_id} Stage 3 started with {len(selected_exploits) if selected_exploits else 'all'} exploits")
+        
+        return {
+            "scan_id": scan_id,
+            "status": ScanStatus.STAGE_3,
+            "message": f"Stage 3 started with {'all' if run_all else len(selected_exploits) if selected_exploits else 0} exploits",
+            "selected_exploits": selected_exploits if not run_all else None,
+            "run_all": run_all
+        }
     
     def _get_dir_size(self, path: str) -> int:
         """Calculate total size of directory in bytes."""

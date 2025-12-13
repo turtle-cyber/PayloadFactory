@@ -45,13 +45,14 @@ def scan_log(message: str, level: str = "info"):
         except:
             pass  # Don't fail scan if log saving fails
 
-def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False, smart_fuzz=True):
+def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, infinite=False, threads=1, use_boofuzz=False, tomcat_direct=False, auto_execute=False, smart_fuzz=True, selected_exploits=None):
     """
     Stage 3: Fuzzing and RL Optimization of generated exploits.
     
     Args:
         auto_execute: If True, automatically execute exploits against the target after optimization
         smart_fuzz: If True, use SmartHybridFuzzer (3-layer fuzzing with LLM)
+        selected_exploits: List of exploit filenames to process (if None, process all)
     """
     # Set global scan_id for logging
     global _current_scan_id
@@ -82,6 +83,17 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
     if not exploit_files:
         scan_log("No exploits found to optimize. Skipping Stage 3.", "warning")
         return
+    
+    # Filter exploits if selected_exploits provided
+    if selected_exploits:
+        original_count = len(exploit_files)
+        # Extract basenames from user input (handles both full paths and filenames)
+        selected_basenames = [os.path.basename(s) for s in selected_exploits]
+        exploit_files = [f for f in exploit_files if os.path.basename(f) in selected_basenames]
+        scan_log(f"Filtered to {len(exploit_files)} selected exploits (from {original_count} total)")
+        if not exploit_files:
+            scan_log("No matching exploits found for selection. Skipping Stage 3.", "warning")
+            return
 
     scan_log(f"Found {len(exploit_files)} exploits to optimize.")
     
@@ -190,9 +202,9 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                         base_payload = b"A" * 64
                     
                     if threads > 1:
-                        crashes = fuzzer.run_parallel_fuzzing_session(base_payload, iterations=20, threads=threads)
+                        crashes = fuzzer.run_parallel_fuzzing_session(base_payload, iterations=10, threads=threads)
                     else:
-                        crashes = fuzzer.run_fuzzing_session(base_payload, iterations=20)
+                        crashes = fuzzer.run_fuzzing_session(base_payload, iterations=10)
                     
                     if crashes:
                         # Analyze findings to report specific type
@@ -391,7 +403,7 @@ def scan_stage_3(output_dir, remote_host=None, remote_port=None, scan_id=None, i
                     
                     if exec_result.rce_detected:
                         scan_log(f"  -> *** RCE SUCCESSFUL! *** Exploit: {file_name}", "warning")
-                        scan_log(f"  -> Output: {exec_result.output[:500] if exec_result.output else 'N/A'}", "warning")
+                        scan_log(f"  -> Output: {exec_result.output[:2000] if exec_result.output else 'N/A'}", "warning")
                         # Append RCE confirmation to exploit file
                         with open(exploit_file, 'a', encoding='utf-8') as f:
                             f.write(f"\n# *** RCE CONFIRMED on {remote_host}:{remote_port} ***\n")
@@ -431,10 +443,16 @@ if __name__ == "__main__":
     parser.add_argument("--auto-execute", action="store_true", help="Automatically execute exploits against target after optimization")
     parser.add_argument("--smart-fuzz", action="store_true", default=True, help="Use Smart Hybrid Fuzzer (3-Layer: Random + Boofuzz + LLM)")
     parser.add_argument("--no-smart-fuzz", action="store_true", help="Disable Smart Hybrid Fuzzer, use legacy fuzzer")
+    parser.add_argument("--selected-exploits", help="Comma-separated list of exploit filenames to run (if not provided, runs all)")
     args = parser.parse_args()
     
     # Handle --no-smart-fuzz flag
     smart_fuzz = args.smart_fuzz and not args.no_smart_fuzz
     
-    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct, auto_execute=args.auto_execute, smart_fuzz=smart_fuzz)
+    # Parse selected exploits
+    selected_exploits = None
+    if args.selected_exploits:
+        selected_exploits = [e.strip() for e in args.selected_exploits.split(",") if e.strip()]
+    
+    scan_stage_3(args.output_dir, args.remote_host, args.remote_port, args.scan_id, infinite=args.infinite, threads=args.threads, use_boofuzz=args.use_boofuzz, tomcat_direct=args.tomcat_direct, auto_execute=args.auto_execute, smart_fuzz=smart_fuzz, selected_exploits=selected_exploits)
 

@@ -346,44 +346,103 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
                     # Extract context
                     context = extract_vulnerability_context(file_path, vuln, code_content)
                     
-                    # Generate enhanced exploit
-                    exploit_result = exploit_gen.generate_exploit_enhanced(
-                        context=context,
-                        weaponize=True,
-                        weaponize_config=None
-                    )
+                    # =========================================================
+                    # NEW: Direct CVE Template Injection
+                    # When a specific CVE is detected, use the working exploit
+                    # template DIRECTLY instead of asking LLM to generate
+                    # =========================================================
+                    exploit_code = None
+                    payload_bytes = b""
+                    metadata = {}
+                    use_direct_template = False
                     
-                    if exploit_result['success']:
-                        exploit_code = exploit_result['script']
-                        payload_bytes = exploit_result['payload']
-                        metadata = exploit_result['metadata']
+                    # Check if we have a detected CVE ID
+                    detected_cve = vuln.get('cve') or classification.get('cve', '')
+                    
+                    if detected_cve:
+                        try:
+                            from ml_engine.exploit_templates import get_cve_template
+                            
+                            cve_template = get_cve_template(detected_cve)
+                            if cve_template:
+                                logger.info(f"[DIRECT-CVE] Using template for {detected_cve}: {cve_template.name}")
+                                
+                                # Get exploit code directly from template
+                                exploit_code = cve_template.exploit_template
+                                
+                                # Replace target placeholders
+                                if target_url:
+                                    exploit_code = exploit_code.replace("__TARGET_PLACEHOLDER__", target_url)
+                                    exploit_code = exploit_code.replace("{target}", target_url)
+                                    target_ip = target_url.replace("http://", "").replace("https://", "").split(":")[0]
+                                    exploit_code = exploit_code.replace("__TARGET_IP_PLACEHOLDER__", target_ip)
+                                    exploit_code = exploit_code.replace("{target_ip}", target_ip)
+                                else:
+                                    exploit_code = exploit_code.replace("__TARGET_PLACEHOLDER__", "http://localhost:8080")
+                                    exploit_code = exploit_code.replace("{target}", "http://localhost:8080")
+                                    exploit_code = exploit_code.replace("__TARGET_IP_PLACEHOLDER__", "localhost")
+                                    exploit_code = exploit_code.replace("{target_ip}", "localhost")
+                                
+                                metadata = {
+                                    "architecture": "64-bit",
+                                    "protocol": cve_template.protocol,
+                                    "cwe": cve_template.cwe,
+                                    "cve": detected_cve,
+                                    "weaponized": True,
+                                    "template_used": True
+                                }
+                                use_direct_template = True
+                                
+                        except Exception as template_err:
+                            logger.warning(f"Failed to load CVE template: {template_err}")
+                    
+                    # If no direct template, fall back to LLM generation
+                    if not use_direct_template:
+                        # Add target URL to context for placeholder replacement
+                        if target_url:
+                            context['target'] = target_url
                         
+                        # Generate enhanced exploit via LLM
+                        exploit_result = exploit_gen.generate_exploit_enhanced(
+                            context=context,
+                            weaponize=True,
+                            weaponize_config=None
+                        )
+                        
+                        if exploit_result['success']:
+                            exploit_code = exploit_result['script']
+                            payload_bytes = exploit_result['payload']
+                            metadata = exploit_result['metadata']
+                    
+                    if exploit_code:
                         # Safety check: Ensure exploit code is not empty
                         if not exploit_code.strip():
                             logger.warning(f"Exploit code is empty for {file_name}, skipping...")
                             continue
                         
-                        # Validate exploit
+                        # Skip CWE validation for direct templates (already verified)
                         validation = validator.validate(exploit_code)
                         
-                        # NEW: CWE Validation
-                        cwe_validation = validator.validate_cwe_match(exploit_code, cwe)
-                        if not cwe_validation['valid']:
-                             logger.warning(f"CWE Mismatch: {cwe_validation['message']}")
-                             # Trigger regeneration
-                             failure_reason = f"CWE Mismatch: {cwe_validation['message']}"
-                             exploit_code = exploit_gen.regenerate_exploit(exploit_code, failure_reason)
-                             # Re-validate
-                             validation = validator.validate(exploit_code)
+                        # CWE Validation - Skip for direct templates
+                        if not use_direct_template:
+                            cwe_validation = validator.validate_cwe_match(exploit_code, cwe)
+                            if not cwe_validation['valid']:
+                                 logger.warning(f"CWE Mismatch: {cwe_validation['message']}")
+                                 # Trigger regeneration
+                                 failure_reason = f"CWE Mismatch: {cwe_validation['message']}"
+                                 exploit_code = exploit_gen.regenerate_exploit(exploit_code, failure_reason)
+                                 # Re-validate
+                                 validation = validator.validate(exploit_code)
                         
-                        if not validation['syntax_valid']:
+                        # Syntax validation - Skip regeneration for direct templates
+                        if not validation['syntax_valid'] and not use_direct_template:
                             logger.warning(f"Generated exploit has syntax errors: {validation['errors']}")
                             # FIXED Fallback: Use regenerate_exploit to preserve context
                             logger.info("Attempting to regenerate exploit with error feedback...")
                             failure_reason = f"Syntax errors: {validation['errors']}"
                             exploit_code = exploit_gen.regenerate_exploit(exploit_code, failure_reason)
                             validation = validator.validate(exploit_code)
-                        
+
                         # Save exploit script
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         exploit_filename = f"exploit_{file_name}_{i}_{timestamp}.py"
@@ -606,11 +665,80 @@ def scan_stage_2(target_dir, output_dir, intermediate_file, remote_host=None, re
             except:
                 pass
 
+        # =========================================================
+        # AUTO-EXECUTION PHASE
+        # Run all generated exploits and verify success
+        # =========================================================
+        if auto_execute and remote_host and exploits_generated_count > 0:
+            scan_log("=" * 50)
+            scan_log("🚀 AUTO-EXECUTION PHASE")
+            scan_log("=" * 50)
+            
+            try:
+                from ml_engine.exploit_executor import ExploitExecutor
+                
+                executor = ExploitExecutor(timeout=60)
+                target_port = remote_port or 8080
+                
+                scan_log(f"[*] Executing {exploits_generated_count} exploits against {remote_host}:{target_port}")
+                
+                results = executor.execute_all(output_dir, remote_host, target_port)
+                
+                # Process results
+                rce_count = sum(1 for r in results if r.rce_detected)
+                dos_count = sum(1 for r in results if r.dos_detected)
+                success_count = sum(1 for r in results if r.success)
+                
+                scan_log("=" * 50)
+                scan_log("EXPLOITATION RESULTS")
+                scan_log("=" * 50)
+                scan_log(f"Total Executed: {len(results)}")
+                scan_log(f"✅ Successful: {success_count}")
+                scan_log(f"🔴 RCE Confirmed: {rce_count}")
+                scan_log(f"⚠️ DoS Detected: {dos_count}")
+                scan_log("=" * 50)
+                
+                # Log individual results
+                for i, result in enumerate(results):
+                    status = ""
+                    if result.rce_detected:
+                        status = "🔴 RCE"
+                    elif result.dos_detected:
+                        status = "⚠️ DoS"
+                    elif result.success:
+                        status = "✅ OK"
+                    else:
+                        status = "❌ FAILED"
+                    
+                    scan_log(f"  [{i+1}] {status} - Time: {result.execution_time:.2f}s")
+                    
+                    # Show output preview for successful exploits
+                    if result.success and result.output:
+                        preview = result.output[:200].replace('\n', ' ')
+                        scan_log(f"      Output: {preview}...")
+                
+                # Save verification results to DB
+                if scan_id:
+                    try:
+                        db_manager.update_scan_progress(scan_id, {
+                            "verification.total_executed": len(results),
+                            "verification.rce_confirmed": rce_count,
+                            "verification.dos_detected": dos_count,
+                            "verification.successful": success_count
+                        })
+                    except Exception as db_err:
+                        logger.warning(f"Failed to save verification results: {db_err}")
+                
+            except Exception as exec_err:
+                scan_log(f"❌ Auto-execution failed: {exec_err}")
+                logger.error(f"Auto-execution error: {exec_err}")
+
         # Cleanup
         del vuln_scanner
         del exploit_gen
         torch.cuda.empty_cache()
         gc.collect()
+
 
     except Exception as e:
         logger.error(f"Stage 2 Failed: {e}")

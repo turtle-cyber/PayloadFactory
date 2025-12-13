@@ -187,14 +187,14 @@ const ReconPage = () => {
           // Save to localStorage for persistence
           saveReconScanToStorage(scanData, undefined);
 
-          // Stop polling if scan finished
-          if (["completed", "failed", "cancelled"].includes(scanData.status)) {
+          // Stop polling if scan finished (awaiting-selection means Stage 2 done, waiting for exploit selection)
+          if (["completed", "failed", "cancelled", "awaiting-selection"].includes(scanData.status)) {
             stopPolling();
             setIsAnalyzing(false);
             // Clear from storage or keep for display - we keep it for display but mark as finished
             saveReconScanToStorage(scanData, undefined);
-            if (scanData.status === "completed") {
-              toast.success("Attack completed", "View results in the Findings page");
+            if (scanData.status === "completed" || scanData.status === "awaiting-selection") {
+              toast.success("Scan completed", "View results in the Findings page");
             } else if (scanData.status === "failed") {
               toast.error("Attack failed", "Check logs for details");
             }
@@ -384,10 +384,12 @@ const ReconPage = () => {
 
     while (attempts < maxAttempts) {
       try {
-        const response = await http.get(`/scan/status/${scanId}`);
+        // FIXED: Use correct endpoint /scans/:id/status (not /scan/status/:id)
+        const response = await http.get(`/scans/${scanId}/status`);
         const status = response.data.data?.status || response.data.status;
 
-        if (status === "completed") {
+        // "awaiting-selection" means Stage 2 completed, waiting for user to select exploits
+        if (status === "completed" || status === "awaiting-selection") {
           return true;
         } else if (status === "failed" || status === "cancelled") {
           return false;
